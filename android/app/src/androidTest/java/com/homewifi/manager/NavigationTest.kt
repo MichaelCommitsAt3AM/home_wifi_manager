@@ -19,4 +19,23 @@ class NavigationTest {
         compose.setContent { MaterialTheme { DeviceList(UiState(), true, {}, {}) } }
         compose.onNodeWithText("No restrictions found").assertIsDisplayed()
     }
+    @Test fun overviewHidesUnconfiguredAdGuard() {
+        compose.setContent { MaterialTheme { Overview(UiState(authenticated = true), {}, {}, {}) } }
+        compose.onNodeWithText("AdGuard Home").assertDoesNotExist()
+        compose.onNodeWithText("View devices").assertIsDisplayed()
+    }
+    @Test fun overviewShowsConfiguredAdGuardWhenOffline() {
+        val state = UiState(authenticated = true,
+            dashboard = Dashboard(adguard = AdGuardStatus(configured = true, online = false)))
+        compose.setContent { MaterialTheme { Overview(state, {}, {}, {}) } }
+        compose.onNodeWithText("AdGuard Home").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Needs attention").assertIsDisplayed()
+    }
+    @Test fun overviewShowsConfiguredAdGuardWhenHealthy() {
+        val state = UiState(authenticated = true, dashboard = Dashboard(adguard = AdGuardStatus(
+            configured = true, online = true, running = true, protection_enabled = true, filtering_enabled = true)))
+        compose.setContent { MaterialTheme { Overview(state, {}, {}, {}) } }
+        compose.onNodeWithText("AdGuard Home").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Protection active").assertIsDisplayed()
+    }
 }

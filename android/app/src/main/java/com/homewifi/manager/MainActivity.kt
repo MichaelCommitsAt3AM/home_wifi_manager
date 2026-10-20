@@ -328,7 +328,9 @@ fun SettingsScreen(vm: WifiViewModel, state: UiState, onActivity: () -> Unit, on
             if(Build.VERSION.SDK_INT >= 31) Row(verticalAlignment = Alignment.CenterVertically) { Text("Use wallpaper colors", Modifier.weight(1f)); Switch(state.dynamicColors, vm::dynamicColors) }
         } }
         if(state.authenticated) {
-            item { SettingsSection("DNS protection") { AdGuardCard(state.dashboard.adguard, expanded = true); AdGuardControls(vm, state) } }
+            if (state.dashboard.adguard.configured) {
+                item { SettingsSection("DNS protection") { AdGuardCard(state.dashboard.adguard, expanded = true); AdGuardControls(vm, state) } }
+            }
             item { Surface(onClick = onHealth, shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
                 Text("Connection health", Modifier.fillMaxWidth().padding(20.dp), style = MaterialTheme.typography.titleSmall)
             } }

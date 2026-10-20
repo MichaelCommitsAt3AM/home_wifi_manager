@@ -1,5 +1,7 @@
 # AdGuard Home integration
 
+This integration is optional and disabled by default in `.env.example`. Leave `ADGUARD_URL` empty to disable it. The app hides the AdGuard Overview card and DNS protection settings when the backend reports `configured: false`. A configured but unavailable instance remains visible so connection or authentication failures can be addressed. To enable it, set `ADGUARD_URL`, `ADGUARD_USERNAME`, `ADGUARD_PASSWORD` and the appropriate `ADGUARD_DNS_HOST`, then recreate the backend with `docker compose up -d backend`.
+
 The backend integrates with an existing AdGuard Home instance with read-only monitoring and owner-confirmed controls. It was verified against a deployed `adguardhome` container running the v0.107.x API. In that setup, AdGuard was the LAN's primary DNS server with no secondary DNS. Those are deployment-specific facts; adjust the integration to your own network, and note that reading documentation is not a substitute for checking your live configuration.
 
 Example live checks:

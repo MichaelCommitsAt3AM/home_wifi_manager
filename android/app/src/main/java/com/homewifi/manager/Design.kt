@@ -89,7 +89,9 @@ fun Overview(state: UiState, onDevices: () -> Unit, onSettings: () -> Unit, onRe
                         }
                     }
                 }
-                item { AdGuardCard(state.dashboard.adguard, onDetails = onSettings) }
+                if (state.dashboard.adguard.configured) {
+                    item { AdGuardCard(state.dashboard.adguard, onDetails = onSettings) }
+                }
                 item { TextButton(onClick = onHealth) {
                     Icon(Icons.Default.NetworkCheck, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                     Text(if(state.connection.stale) "Connection health · checking" else healthLabel(state.connection.state))
