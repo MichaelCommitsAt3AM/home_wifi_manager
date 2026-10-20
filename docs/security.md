@@ -1,0 +1,21 @@
+# Security
+
+The API controls network access and uses a single high-entropy bearer token with owner permissions. Possession allows device reads, metadata edits and validated writes. Serve restricts network exposure to the existing tailnet. Tailnet ACLs remain the owner's responsibility. Never use Funnel or WAN forwarding for this service.
+
+The deployed `.env` is owner-readable only and contains router credentials plus API token. It is excluded from Docker build context and Git. Docker itself and its administrators can read container environment; trusted server administration is required. No secret is compiled into the APK. API tokens are AES-GCM encrypted with an Android Keystore key. Device cache/history are private application data but are not separately encrypted; an unlocked/rooted phone or trusted server administrator can read them. Android backup is disabled.
+
+The same owner-only server configuration now holds the existing AdGuard Home credentials. Only fixed read-only API routes are called, across the host Docker gateway; no AdGuard credentials, query logs or browsing domains are returned to Android. Aggregate DNS statistics and configured server DNS probes are exposed behind the owner API token. AdGuard configuration and protection controls are not exposed by this integration.
+
+Android accepts HTTPS, validates certificates using the platform trust store and does not follow redirects carrying authorization to other hosts. There is no certificate-verification bypass. TLS ends at Tailscale Serve; its local upstream is loopback HTTP. Router traffic is necessarily HTTP on the private LAN. Base64 login passwords do not offer confidentiality. Do not put the router on an untrusted network or expose its dashboard publicly.
+
+Server-side MAC normalization, request schemas, critical-device checks and capability gates protect commands. The adapter accepts only the inspected router URL/firmware and already-enabled blacklist modes. It parses restricted literal data without executing router JavaScript, validates instance domains before deletion, uses fresh CSRF tokens, serializes sessions, retries read authentication once and never blindly retries mutations. Failed password authentication latches until restart to avoid lockout.
+
+The API uses bearer headers, not ambient cookies, so browser cookie CSRF is not part of this protocol. CORS is not enabled. Router mutations retain the firmware CSRF scheme. HTTP request/access logging is disabled; structured events omit credentials, cookies and token values. Do not enable HTTP debug logging in production or paste `.env`/router pages into issue trackers. Database audit events retain management failures and verified outcomes, plus metadata/settings/schedule actions, for the configured retention period.
+
+The container runs as UID 10001, drops all capabilities, disallows privilege escalation, uses a read-only root and bounded resources/logs. SQLite has a dedicated volume, WAL and busy timeout. Existing services, firewall rules, Tailscale routing and unrelated volumes are unchanged. No router reboot/reset/firmware or WAN/Wi-Fi changes were made.
+
+Safety flags `WRITES_ENABLED` and `VERIFIED_WRITES` are both false at initial deployment. Before enabling, identify a non-critical test device and validate block then unblock with readback. Keep the server, management computer and phone in `PROTECTED_MACS`; `PROTECTED_IPS` provides an additional guard. A changed/randomized MAC may represent the same physical phone; review protection when it changes. Local device aliases/trust do not modify router configuration.
+
+Rotate the API token by replacing it in the server `.env` with a new 32-byte random token, recreating only the backend container, then entering the new token on the phone. Router credential changes must be made by the owner in the router dashboard and updated in the server `.env`. Back up `.env` separately to an encrypted owner-controlled location; database backup alone does not contain those credentials.
+
+The owner-authorized live Wi-Fi validation subsequently passed for the designated test MAC. Both deployed write flags are now true; source defaults remain false for new installations. Critical-device MAC/IP protections remain active. See router-investigation.md and validation.md for the exact tested scope.

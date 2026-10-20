@@ -1,0 +1,16 @@
+# Architecture
+
+Native Android (Kotlin, Compose Material 3, Hilt, ViewModel/StateFlow, Retrofit/OkHttp) connects over authenticated HTTPS to FastAPI. Tailscale Serve terminates TLS and forwards to a Docker container published only on server loopback. The backend alone holds router credentials and owns the serialized router session. SQLite in a dedicated Docker volume is the source for historical metadata; fresh router snapshots are the source for associations and restrictions.
+
+The app has overview, searchable/sortable device list, blocked list, details, history, settings and schedule controls. Dynamic system colors and explicit system/light/dark themes are supported. Loading indicators/skeletons, empty states, refresh, error messages and stale-cache warnings are implemented. Room stores the last device list for offline viewing. Cache contents are not presented as current router truth. Android Keystore AES-GCM encrypts the backend bearer token; backups are disabled.
+
+The backend uses SQLAlchemy with an Alembic migration. A single APScheduler loop (one process, one job instance) performs conservative polling, schedule checks and optional notification outbox delivery. It starts immediately and repeats every five seconds; router polling itself defaults to once per minute, minimum 30 seconds, failure backoff capped at 15 minutes. Two successful offline observations debounce disconnects. Outages preserve last observations and generate one outage/recovery event per transition. All requests to the router share one async lock; management and monitoring share a controller lock as well.
+
+Device timestamps and events use UTC with explicit offsets. Phone display uses the phone timezone. Scheduling supports timezone-aware one-time actions or weekly wall times, skips nonexistent daylight-saving times, and selects the first occurrence of repeated times. Persisted due actions are checked after restart. Occurrences older than five minutes are logged as missed, rather than replayed long after their intended time. Desired-state operations are idempotent. Manual access changes pause active device schedules. Exact-time overlaps and overlapping same-zone weekly schedules are rejected; complex cross-timezone scheduling should be avoided.
+
+Notifications have two paths:
+
+1. Native WorkManager checks activity at a minimum 15-minute interval, honors Android notification permission and categories, groups updates and maintains an event cursor. Android/Doze can delay these checks. This is useful **delayed notification**, not guaranteed immediate push.
+2. An optional configured HTTPS ntfy topic accepts server outbox messages with bounded retries and category filtering. Only event kind/time are sent, not identities. This relay is not provisioned or configured automatically. Reliable immediate background delivery needs a separately configured authenticated self-hosted ntfy service and its Android client/UnifiedPush distributor; this build does not integrate a native UnifiedPush distributor.
+
+Deploy exactly one backend worker. SQLite, scheduler and router session coordination are intentionally scoped to one process. Do not run multiple replicas without adding distributed coordination. Production never selects the mock adapter; it exists only for automated tests.
