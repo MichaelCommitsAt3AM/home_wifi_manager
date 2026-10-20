@@ -32,9 +32,22 @@ class DevicePatch(BaseModel):
 class AccessChange(BaseModel):
     blocked: bool
     confirmed: bool
+    minutes: int | None = Field(default=None, ge=1, le=1440)
 
 
 class RouterRelease(BaseModel):
+    confirmed: bool
+
+
+class ProtectionChange(BaseModel):
+    enabled: bool
+    minutes: int = Field(default=5, ge=1, le=1440)
+    confirmed: bool
+
+
+class DomainException(BaseModel):
+    domain: str = Field(min_length=3, max_length=253)
+    allowed: bool
     confirmed: bool
 
 
@@ -70,6 +83,7 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
 
     @asynccontextmanager
     async def lifespan(app):
+        controller.speed_tests.recover()
         scheduler = AsyncIOScheduler(timezone='UTC')
         if start_scheduler:
             scheduler.add_job(controller.tick, 'interval', seconds=5, max_instances=1, coalesce=True, next_run_time=datetime.now(timezone.utc))
@@ -79,10 +93,11 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
             scheduler.shutdown(wait=False)
         async with controller.lock:
             await controller.adapter.close()
+        await controller.speed_tests.close()
         await controller.adguard.close()
         engine.dispose()
 
-    app = FastAPI(title='Home WiFi Manager', version='1.0.0', lifespan=lifespan,
+    app = FastAPI(title='Home WiFi Manager', version='1.2.0', lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.controller, app.state.sessions = controller, sessions
     buckets = defaultdict(deque)
@@ -138,7 +153,7 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
         # Liveness only, no network identities or private monitoring data.
         with sessions() as db:
             db.execute(select(1)).scalar_one()
-        return {'status': 'ok', 'version': '1.0.0'}
+        return {'status': 'ok', 'version': '1.2.0'}
 
     @app.get('/api/dashboard', dependencies=[Depends(auth)])
     async def dashboard():
@@ -148,7 +163,7 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
             router = dict(controller.health['router'])
             if access['router_access_paused']:
                 router.update(block_supported=False, scheduling_supported=False)
-            return {**controller.health, **access, 'router': router,
+            return {**controller.health, **access, 'router': router, 'connection': controller.connection.report(),
                     'router_online': None if access['router_access_paused'] else controller.health['router_online'],
                     'total': len(devices),
                     'connected': sum(d.online for d in devices),
@@ -183,6 +198,46 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
         controller.health['adguard'] = result
         return result
 
+    @app.get('/api/connection', dependencies=[Depends(auth)])
+    async def connection():
+        return {**controller.connection.report(), 'speed_test': controller.speed_tests.report()}
+
+    @app.post('/api/connection/check', dependencies=[Depends(auth)])
+    async def check_connection():
+        await controller.connection.check(force=True)
+        return await connection()
+
+    @app.post('/api/connection/speedtest', dependencies=[Depends(auth)])
+    async def speedtest(body: RouterRelease):
+        if not body.confirmed:
+            raise HTTPException(422, 'Confirm the server speed test and its data usage')
+        return await controller.speed_tests.start()
+
+    @app.post('/api/adguard/protection', dependencies=[Depends(auth)])
+    async def protection(body: ProtectionChange):
+        if not body.confirmed: raise HTTPException(422, 'Confirmation required')
+        await controller.adguard.protection(body.enabled, body.minutes)
+        with sessions.begin() as db: controller.event(db, 'adguard_protection_changed')
+        return await adguard()
+
+    @app.post('/api/adguard/filters/refresh', dependencies=[Depends(auth)])
+    async def refresh_filters(body: RouterRelease):
+        if not body.confirmed: raise HTTPException(422, 'Confirmation required')
+        result = await controller.adguard.refresh_filters()
+        with sessions.begin() as db: controller.event(db, 'adguard_filters_refreshed')
+        return result
+
+    @app.get('/api/adguard/exceptions', dependencies=[Depends(auth)])
+    async def domain_exceptions():
+        return await controller.adguard.exceptions()
+
+    @app.post('/api/adguard/exceptions', dependencies=[Depends(auth)])
+    async def domain_exception(body: DomainException):
+        if not body.confirmed: raise HTTPException(422, 'Confirmation required')
+        result = await controller.adguard.exception(body.domain, body.allowed)
+        with sessions.begin() as db: controller.event(db, 'adguard_exception_changed')
+        return result
+
     @app.get('/api/devices/{address}', dependencies=[Depends(auth)])
     async def detail(address: str):
         with sessions() as db:
@@ -209,7 +264,9 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
     async def access(address: str, change: AccessChange):
         if not change.confirmed:
             raise HTTPException(422, 'Explicit confirmation is required')
-        await controller.manage(mac(address), change.blocked)
+        if change.minutes is not None and not change.blocked:
+            raise HTTPException(422, 'Duration applies only to a new block')
+        await controller.manage(mac(address), change.blocked, timed_minutes=change.minutes)
         return await detail(address)
 
     @app.post('/api/sync', dependencies=[Depends(auth)])
@@ -243,7 +300,7 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
                     'notification_categories': controller.config(db, 'notification_categories', 'unknown_device,router_offline,router_restored,schedule_executed,schedule_failed,management_failed').split(','),
                     'writes_enabled': settings.writes_enabled and settings.verified_writes and not access['router_access_paused'],
                     'retention_days': settings.retention_days, 'ntfy_configured': bool(settings.ntfy_url),
-                    'router_url': settings.router_url, 'version': '1.0.0'}
+                    'router_url': settings.router_url, 'version': '1.2.0'}
 
     @app.put('/api/settings', dependencies=[Depends(auth)])
     async def save_preferences(body: Preferences):
@@ -291,6 +348,8 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
                     raise HTTPException(403, 'Critical devices cannot be scheduled')
                 active = list(db.scalars(select(Schedule).where(Schedule.mac == address, Schedule.enabled == True)))
                 for item in active:
+                    if item.status.startswith('timed_'):
+                        raise HTTPException(409, 'Unblock the device before adding another schedule')
                     same_recurring = body.local_time and item.local_time == body.local_time and item.timezone == body.timezone and set(item.weekdays.split(',')) & set(weekdays.split(','))
                     if item.next_run == next_run or same_recurring:
                         raise HTTPException(409, 'Conflicting schedule')
@@ -308,6 +367,8 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
                 item = db.get(Schedule, sid)
                 if not item:
                     raise HTTPException(404, 'Schedule not found')
+                if item.enabled and item.status.startswith('timed_'):
+                    raise HTTPException(409, 'Unblock the device to end its timed block')
                 item.enabled = False
                 item.status = 'cancelled'
                 controller.event(db, 'schedule_cancelled', item.mac, f'schedule:{sid}')

@@ -1,7 +1,10 @@
-"""Read-only AdGuard Home status and DNS probes; never changes the existing service."""
+"""AdGuard status, DNS probes, and serialized owner-confirmed controls."""
 import asyncio
 import time
 import socket
+import ipaddress
+import re
+from .adapters.base import RouterError, CapabilityError
 from datetime import datetime, timezone
 import httpx
 import dns.asyncresolver
@@ -31,6 +34,21 @@ async def dns_probe(host):
     except (OSError, dns.exception.DNSException):
         result['error'] = 'dns_probe_failed'
     return result
+
+
+class AdGuardControlError(RouterError):
+    code = 'adguard_control_failed'
+
+
+def normalize_domain(value):
+    value = value.strip().rstrip('.').lower()
+    try:
+        value = value.encode('idna').decode('ascii')
+        ipaddress.ip_address(value)
+    except ValueError:
+        if len(value) <= 253 and '.' in value and all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label) for label in value.split('.')):
+            return value
+    raise ValueError('Enter a domain such as example.com, without a URL, IP address or wildcard')
 
 
 class AdGuard:
@@ -87,7 +105,7 @@ class AdGuard:
                         active = [f for f in filters.get('filters', []) if f.get('enabled')]
                         # Only aggregate counts leave this adapter; browsing domains/query logs are not exposed.
                         result.update(online=True, running=status['running'], protection_enabled=status['protection_enabled'],
-                                      filtering_enabled=filters['enabled'], version=status.get('version', ''),
+                                      filtering_enabled=filters['enabled'], protection_disabled_duration=int(status.get('protection_disabled_duration', 0)), version=status.get('version', ''),
                                       dns_port=status.get('dns_port', 53), queries=queries, blocked_queries=blocked,
                                       blocked_percent=round(100 * blocked / queries, 1) if queries else 0,
                                       avg_processing_ms=round(float(stats.get('avg_processing_time', 0)) * 1000, 2),
@@ -99,3 +117,87 @@ class AdGuard:
                     result['error'] = 'adguard_unavailable_or_invalid_response'
             self.cached, self.checked = result, time.monotonic()
             return result
+
+
+    async def _control(self, method, route, body=None):
+        if not self.settings.adguard_url or self.auth_rejected:
+            raise AdGuardControlError('AdGuard is unavailable or authentication needs attention')
+        try:
+            auth = httpx.BasicAuth(self.settings.adguard_username, self.settings.adguard_password.get_secret_value())
+            response = await self.client.request(method, self.settings.adguard_url.rstrip('/')+'/control'+route, auth=auth, json=body)
+            if response.status_code == 401:
+                self.auth_rejected = True
+            response.raise_for_status()
+            return response
+        except httpx.HTTPError as error:
+            self.checked = 0
+            raise AdGuardControlError('AdGuard did not confirm the request; refresh before retrying') from error
+
+    async def protection(self, enabled, minutes):
+        async with self.lock:
+            self.checked = 0
+            await self._control('POST', '/protection', {'enabled': enabled, 'duration': 0 if enabled else minutes*60000})
+            try:
+                state = (await self._control('GET', '/status')).json()
+                if state.get('protection_enabled') is not enabled:
+                    raise AdGuardControlError('AdGuard protection change was not verified')
+            except (ValueError, TypeError) as error:
+                raise AdGuardControlError('Unexpected AdGuard status') from error
+
+    async def refresh_filters(self):
+        async with self.lock:
+            self.checked = 0
+            response = await self._control('POST', '/filtering/refresh', {'whitelist': False})
+            try:
+                updated = response.json()['updated']
+                if not isinstance(updated, int) or updated < 0: raise ValueError()
+                return {'updated': updated}
+            except (ValueError, KeyError, TypeError) as error:
+                raise AdGuardControlError('Filter refresh response could not be verified') from error
+
+    async def _rules(self):
+        try:
+            rules = (await self._control('GET', '/filtering/status')).json()['user_rules']
+            if not isinstance(rules, list) or not all(isinstance(x, str) for x in rules): raise ValueError()
+            return rules
+        except (ValueError, KeyError, TypeError) as error:
+            raise AdGuardControlError('Custom filtering rules could not be read safely') from error
+
+    @staticmethod
+    def managed_exceptions(rules):
+        result = []
+        for i, line in enumerate(rules[:-1]):
+            if line.startswith('! Home WiFi allow: '):
+                domain = line.removeprefix('! Home WiFi allow: ')
+                try:
+                    if normalize_domain(domain) == domain and rules[i+1] == '@@||'+domain+'^': result.append(domain)
+                except ValueError: pass
+        return sorted(set(result))
+
+    async def exceptions(self):
+        async with self.lock:
+            return {'domains': self.managed_exceptions(await self._rules())}
+
+    async def exception(self, domain, allowed):
+        domain = normalize_domain(domain)
+        marker, rule = '! Home WiFi allow: '+domain, '@@||'+domain+'^'
+        async with self.lock:
+            self.checked = 0
+            original = await self._rules()
+            managed = self.managed_exceptions(original)
+            updated = list(original)
+            if allowed and domain not in managed:
+                if rule in original:
+                    raise CapabilityError('This domain already has an external allow rule; manage it in AdGuard')
+                updated.extend([marker, rule])
+            elif not allowed and domain in managed:
+                for i in range(len(updated)-2, -1, -1):
+                    if updated[i:i+2] == [marker, rule]: del updated[i:i+2]
+            if updated != original:
+                # Detect external edits before replacing the list; preserve every unrelated rule.
+                if await self._rules() != original:
+                    raise CapabilityError('AdGuard rules changed externally; refresh before retrying')
+                await self._control('POST', '/filtering/set_rules', {'rules': updated})
+                if await self._rules() != updated:
+                    raise AdGuardControlError('Domain exception update was not verified')
+            return {'domains': self.managed_exceptions(updated)}

@@ -13,3 +13,6 @@ secrets/
 *.keystore
 *.log
 artifacts/
+
+*.p12
+dist/

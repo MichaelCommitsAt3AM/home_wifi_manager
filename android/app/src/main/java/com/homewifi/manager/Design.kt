@@ -65,7 +65,7 @@ fun StatusPill(label: String, active: Boolean, modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Overview(state: UiState, onDevices: () -> Unit, onSettings: () -> Unit, onRefresh: () -> Unit) {
+fun Overview(state: UiState, onDevices: () -> Unit, onSettings: () -> Unit, onRefresh: () -> Unit, onHealth: () -> Unit = {}) {
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             item { Text("Your home network", style = MaterialTheme.typography.headlineMedium) }
@@ -90,6 +90,10 @@ fun Overview(state: UiState, onDevices: () -> Unit, onSettings: () -> Unit, onRe
                     }
                 }
                 item { AdGuardCard(state.dashboard.adguard, onDetails = onSettings) }
+                item { TextButton(onClick = onHealth) {
+                    Icon(Icons.Default.NetworkCheck, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                    Text(if(state.connection.stale) "Connection health · checking" else healthLabel(state.connection.state))
+                } }
                 item { Text("Updated ${timestamp(state.dashboard.last_sync)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
@@ -106,7 +110,7 @@ fun AdGuardCard(status: AdGuardStatus, expanded: Boolean = false, onDetails: () 
                 Icon(Icons.Default.VerifiedUser, null, Modifier.size(24.dp), tint = tint)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("AdGuard Home", style = MaterialTheme.typography.titleSmall)
-                    Text(if(healthy) "Protection active" else if(status.authentication_required) "Sign-in needed" else if(!status.configured) "Not connected" else "Needs attention", style = MaterialTheme.typography.bodySmall, color = tint)
+                    Text(if(healthy) "Protection active" else if(status.authentication_required) "Sign-in needed" else if(!status.configured) "Not connected" else if(status.online == true && !status.protection_enabled) "Protection paused" else "Needs attention", style = MaterialTheme.typography.bodySmall, color = tint)
                 }
                 Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -118,7 +122,7 @@ fun AdGuardCard(status: AdGuardStatus, expanded: Boolean = false, onDetails: () 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
                 Surface(shape = RoundedCornerShape(13.dp), color = tint.copy(alpha = .1f)) { Icon(Icons.Default.VerifiedUser, null, Modifier.padding(10.dp).size(21.dp), tint = tint) }
                 Column(Modifier.weight(1f)) { Text("AdGuard Home", style = MaterialTheme.typography.titleSmall)
-                    Text(if(healthy) "DNS protection active" else if(status.authentication_required) "Dashboard login required" else if(!status.configured) "Connect your DNS protection" else "Protection needs attention", style = MaterialTheme.typography.bodySmall, color = tint) }
+                    Text(if(healthy) "DNS protection active" else if(status.authentication_required) "Dashboard login required" else if(!status.configured) "Connect your DNS protection" else if(status.online == true && !status.protection_enabled) "Protection paused" else "Protection needs attention", style = MaterialTheme.typography.bodySmall, color = tint) }
                 Icon(if(healthy) Icons.Default.CheckCircle else Icons.Default.Info, null, Modifier.size(18.dp), tint = tint)
             }
             if(status.online == true) {
@@ -132,7 +136,7 @@ fun AdGuardCard(status: AdGuardStatus, expanded: Boolean = false, onDetails: () 
             }
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Icon(if(status.blocking_observed == true && status.normal_resolution) Icons.Default.CheckCircleOutline else Icons.Default.Info, null, Modifier.size(14.dp), tint = tint)
-                Text(if(status.blocking_observed == true && status.normal_resolution) "Server DNS test passed · ads blocked, normal DNS resolves" else if(!status.configured) "AdGuard integration is being configured on the server." else "Server DNS probe has not confirmed filtering yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if(status.blocking_observed == true && status.normal_resolution) "Server DNS test passed · ads blocked, normal DNS resolves" else if(!status.configured) "AdGuard integration is being configured on the server." else if(status.online == true && !status.protection_enabled) "Protection is paused; DNS still resolves normally." else "Server DNS probe has not confirmed filtering yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if(expanded) {
                 DetailLine("Last checked", timestamp(status.checked_at))

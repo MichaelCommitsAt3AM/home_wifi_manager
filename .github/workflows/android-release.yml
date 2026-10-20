@@ -1,0 +1,73 @@
+name: Android release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: read
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    name: Build signed APK and publish release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Require a release from main
+        run: git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+      - name: Install Android SDK components
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Test and lint
+        working-directory: android
+        run: bash gradlew :app:testDebugUnitTest :app:lintDebug --console=plain
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-release.p12"
+      - name: Build signed Android release
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/android-release.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash gradlew :app:assembleRelease --console=plain
+      - name: Prepare updater assets and verify signature
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/prepare_android_release.py --tag "$RELEASE_TAG"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs dist/*.apk
+          if "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging dist/*.apk | grep -q application-debuggable; then
+            echo 'Refusing to publish a debuggable APK'
+            exit 1
+          fi
+      - name: Publish Android APK, checksum and updater metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          NOTES="docs/releases/${RELEASE_TAG#v}.md"
+          if test -f "$NOTES"; then
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "Home WiFi $RELEASE_TAG" --notes-file "$NOTES"
+          else
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "Home WiFi $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" dist/*
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+      - name: Remove signing material
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/android-release.p12"

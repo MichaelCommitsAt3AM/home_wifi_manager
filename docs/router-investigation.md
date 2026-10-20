@@ -68,3 +68,19 @@ Live Wi-Fi add/remove was validated with explicit owner approval for one test ph
 ## Session release
 
 On 20 October 2026, inspected the firmware's `clickLogout` form handler: it submits `logout.cgi?RequestFile=html/logout.html` using POST. Live tests confirmed this releases the single dashboard login slot for another client. See [Router dashboard access](router-access.md) for the durable monitoring pause and explicit resume behavior.
+
+
+## Total traffic inspection — 20 October 2026
+
+Read-only inspection of the authenticated root dashboard, its menu, WAN/Ethernet/WLAN/optical status pages and referenced WAN data scripts found no usable total Internet byte counter. Monitoring was released for each inspection, diagnostic sessions were explicitly logged out, and normal server monitoring was restored.
+
+- `/html/bbsp/waninfo/waninfo.asp`: PON statistics structure exposes packet fields, with empty values in this page.
+- `/html/amp/opticinfo/opticinfo.asp`: PON transmitted/received packet counts are populated and change between observations. No byte counts exposed there. Packets cannot be converted accurately into bytes without their sizes; optical totals may also include non-Internet services.
+- `/html/amp/ethinfo/ethinfo.asp`: `WANEthernetInterfaceConfig.Stats` exposes received/sent bytes and packets but all four values remain zero in repeated observations while LAN and PON counters advance. This Ethernet WAN interface does not provide a usable measurement for the current fiber connection.
+- Same Ethernet page: four `LANPort.*.Statistics` records provide active transmitted/received byte and packet counts.
+- `/html/amp/wlaninfo/wlaninfo.asp`: WLANConfiguration.1 provides active aggregate wireless sent/received byte and packet counters.
+- Referenced `/html/bbsp/common/wan_list_info.asp`, `wan_list.asp` and `wan_control.asp`: no Internet byte/packet statistics fields found.
+
+LAN/WLAN counters measure interface traffic, including local transfers. Summing them can count a local transfer at both interfaces and cannot be presented as total Internet use. Counter widths, reset behavior and wrap behavior were not validated. No undocumented shell, SNMP service, or alternate privileged account was enabled or tested. These findings establish the exposed dashboard's limitations, not that the firmware has no internal WAN counters.
+
+No usage tracking was implemented. Reliable whole-home Internet usage requires a counter on the actual Internet forwarding path; DNS requests observed by AdGuard are not a measurement of transferred bytes.

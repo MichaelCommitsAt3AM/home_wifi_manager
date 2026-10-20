@@ -17,17 +17,18 @@ data class UiState(
     val schedules: List<Schedule> = emptyList(), val settings: Preferences = Preferences(),
     val loading: Boolean = false, val busy: Boolean = false, val error: String? = null,
     val message: String? = null, val authenticated: Boolean = false, val cached: Boolean = true,
-    val theme: String = "system", val dynamicColors: Boolean = false
+    val theme: String = "system", val dynamicColors: Boolean = false,
+    val connection: ConnectionHealth = ConnectionHealth(), val exceptions: List<String> = emptyList()
 )
 
 fun errorMessage(error: Throwable): String = when (error) {
     is HttpException -> when (error.code()) {
         401 -> "Authentication expired or token incorrect. Check your API token in Settings."
         403 -> "This device is protected. Infrastructure devices cannot be blocked."
-        409 -> "This operation is unavailable. Check router access in Settings or resolve conflicting schedules."
+        409 -> "This action is unavailable right now. Refresh and check its requirements."
         422 -> "Check the device information, time, and settings you entered."
         429 -> "Too many requests. Please wait a minute."
-        502 -> "The server could not verify the router response. Refresh before retrying."
+        502 -> "The server could not verify the response. Refresh before retrying."
         else -> "Server request failed (${error.code()}). Try again."
     }
     is javax.net.ssl.SSLException -> "The HTTPS certificate could not be verified. Check the backend hostname and server certificate."
@@ -42,17 +43,15 @@ fun selectDevices(devices: List<Device>, search: String, filter: String, sort: S
             when (filter) {
                 "Online" -> device.online
                 "Offline" -> !device.online
-                "Unknown" -> !device.trusted
                 "Trusted" -> device.trusted
                 "Blocked" -> device.blocked
                 else -> true
             }
     }
-    return when (sort) {
-        "Name" -> selected.sortedBy { it.name.lowercase() }
-        "Recent" -> selected.sortedByDescending { it.last_seen }
-        else -> selected.sortedWith(compareByDescending<Device> { it.online }.thenBy { it.name.lowercase() })
-    }
+    val onlineFirst = compareByDescending<Device> { it.online }
+    val order = if(sort == "Recent") onlineFirst.thenByDescending { it.last_seen }.thenBy { it.name.lowercase() }
+        else onlineFirst.thenBy { it.name.lowercase() }
+    return selected.sortedWith(order.thenBy { it.mac })
 }
 
 @HiltViewModel
@@ -74,10 +73,11 @@ class WifiViewModel @Inject constructor(private val repository: RouterRepository
             if (force && !mutable.value.settings.router_access_paused) repository.api().sync()
             val (dashboard, devices, settings) = repository.load()
             mutable.update { it.copy(dashboard = dashboard, devices = devices, settings = settings,
-                cached = false, authenticated = true, loading = false) }
+                cached = false, authenticated = true, loading = false,
+                connection = dashboard.connection.copy(speed_test = it.connection.speed_test)) }
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) {
-            mutable.update { it.copy(loading = false, error = errorMessage(e), cached = true,
+            mutable.update { it.copy(loading = false, error = errorMessage(e), cached = true, connection = it.connection.copy(stale = true),
                 authenticated = if (e is HttpException && e.code() == 401) false else it.authenticated) }
         }
     }
@@ -106,7 +106,41 @@ class WifiViewModel @Inject constructor(private val repository: RouterRepository
         mutable.value = UiState(theme = config.theme, dynamicColors = config.dynamicColors)
     }
     fun patch(mac: String, patch: DevicePatch) = action("Device updated") { repository.api().patch(mac, patch) }
-    fun access(device: Device) = action("Router restriction state verified") { repository.api().access(device.mac, AccessChange(!device.blocked)) }
+    fun access(device: Device, minutes: Int? = null) = action(if(minutes == null) "Router restriction state verified" else "Timed block verified; automatic unblock saved") {
+        repository.api().access(device.mac, AccessChange(!device.blocked, minutes = minutes))
+        val schedules = repository.api().schedules(device.mac)
+        mutable.update { it.copy(schedules = schedules) }
+    }
+    fun connection(check: Boolean = false) {
+        if(mutable.value.busy) return
+        viewModelScope.launch {
+            try {
+                val health = if(check) repository.api().checkConnection() else repository.api().connection()
+                mutable.update { it.copy(connection = health) }
+            } catch(e: CancellationException) { throw e }
+            catch(e: Exception) { mutable.update { it.copy(error = errorMessage(e), connection = it.connection.copy(stale = true)) } }
+        }
+    }
+    fun speedTest() = action("Server speed test started") {
+        val result = repository.api().speedTest()
+        mutable.update { it.copy(connection = it.connection.copy(speed_test = result)) }
+    }
+    fun protection(enabled: Boolean, minutes: Int = 5) = action(if(enabled) "AdGuard protection resumed" else "AdGuard paused for $minutes minutes") {
+        val status = repository.api().protection(ProtectionChange(enabled, minutes))
+        mutable.update { it.copy(dashboard = it.dashboard.copy(adguard = status)) }
+    }
+    fun refreshFilters() = action {
+        val result = repository.api().refreshFilters()
+        mutable.update { it.copy(message = "Filter refresh complete · ${result.updated} lists updated") }
+    }
+    fun loadExceptions() = action {
+        val domains = repository.api().exceptions().domains
+        mutable.update { it.copy(exceptions = domains) }
+    }
+    fun exception(domain: String, allowed: Boolean) = action(if(allowed) "Domain exception saved" else "Domain exception removed") {
+        val domains = repository.api().exception(DomainException(domain, allowed)).domains
+        mutable.update { it.copy(exceptions = domains) }
+    }
     fun history(mac: String) = action { mutable.update { it.copy(history = repository.api().events(mac), schedules = repository.api().schedules(mac)) } }
     fun activity(more: Boolean = false) = action {
         val events = repository.api().events(before = if (more) mutable.value.events.lastOrNull()?.id else null)

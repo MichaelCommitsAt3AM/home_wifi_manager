@@ -7,6 +7,7 @@ from sqlalchemy import select, delete
 from .database import Device, Event, Schedule, Config, now
 from .adapters.base import Observation, RouterError, CapabilityError
 from .adguard import AdGuard
+from .connection import ConnectionMonitor, SpeedTests
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ class Controller:
     def __init__(self, settings, adapter, sessions):
         self.settings, self.adapter, self.sessions = settings, adapter, sessions
         self.adguard = AdGuard(settings)
+        self.connection = ConnectionMonitor(settings, sessions)
+        self.speed_tests = SpeedTests(sessions)
         self.lock = asyncio.Lock()
         self.health = {'router_online': None, 'last_sync': None, 'last_attempt': None,
                        'failures': 0, 'error': None, 'router': {}}
@@ -92,7 +95,7 @@ class Controller:
             # Failed explicit reauthentication leaves the durable pause intact.
             await self.adapter.resume()
             with self.sessions.begin() as db:
-                for schedule in db.scalars(select(Schedule).where(Schedule.enabled == True, Schedule.next_run <= now())):
+                for schedule in db.scalars(select(Schedule).where(Schedule.enabled == True, Schedule.next_run <= now(), ~Schedule.status.like('timed_%'))):
                     schedule.status = 'skipped_while_access_released'
                     if schedule.local_time:
                         schedule.next_run = recurring_next(schedule.local_time, schedule.weekdays, schedule.timezone)
@@ -177,9 +180,11 @@ class Controller:
                 log.warning(e.code)
                 return False
 
-    async def manage(self, mac, blocked, scheduled=False, schedule_id=None):
+    async def manage(self, mac, blocked, scheduled=False, schedule_id=None, timed_minutes=None):
         async with self.lock:
             self.require_router_access()
+            if not (self.settings.writes_enabled and self.settings.verified_writes):
+                raise CapabilityError('Router writes are disabled')
             with self.sessions() as db:
                 if schedule_id is not None:
                     schedule = db.get(Schedule, schedule_id)
@@ -196,20 +201,37 @@ class Controller:
                                           device.connection_type, device.port)
             try:
                 # Refresh association immediately before sending a command, avoiding stale IP/SSID identity.
-                observations, _, _ = await self.adapter.snapshot()
+                observations, restrictions, _ = await self.adapter.snapshot()
                 current = next((d for d in observations if d.mac == mac), observation)
                 if blocked and self.protected(current):
                     raise PermissionError('This critical device is protected')
+                timer_id = None
+                if timed_minutes is not None:
+                    if not blocked or any(r.mac == mac for r in restrictions):
+                        raise CapabilityError('Timed blocking requires an unrestricted device; refresh its state first')
+                    # Persist the recovery action BEFORE a potentially ambiguous router write.
+                    with self.sessions.begin() as db:
+                        for item in db.scalars(select(Schedule).where(Schedule.mac == mac, Schedule.enabled == True)):
+                            item.enabled, item.status = False, 'paused_by_manual_action'
+                        timer = Schedule(mac=mac, action='unblock', timezone='UTC',
+                            next_run=(datetime.now(timezone.utc)+timedelta(minutes=timed_minutes)).isoformat(), status='timed_pending')
+                        db.add(timer)
+                        db.flush()
+                        timer_id = timer.id
+                        self.event(db, 'timed_block_requested', mac, f'schedule:{timer.id}; minutes:{timed_minutes}')
                 await self.adapter.set_blocked(current, blocked)
                 with self.sessions.begin() as db:
                     device = db.get(Device, mac)
                     device.blocked = blocked
                     self.event(db, 'device_blocked' if blocked else 'device_unblocked', mac,
                                'schedule' if scheduled else 'manual; active schedules paused')
+                    if timer_id is not None:
+                        db.get(Schedule, timer_id).status = 'timed_active'
                     if not scheduled:
                         for schedule in db.scalars(select(Schedule).where(Schedule.mac == mac, Schedule.enabled == True)):
-                            schedule.enabled = False
-                            schedule.status = 'paused_by_manual_action'
+                            if schedule.id != timer_id:
+                                schedule.enabled = False
+                                schedule.status = 'paused_by_manual_action'
             except (RouterError, PermissionError) as e:
                 with self.sessions.begin() as db:
                     self.event(db, 'management_failed', mac, getattr(e, 'code', 'protected_device'))
@@ -227,7 +249,8 @@ class Controller:
                 if not item or not item.enabled:
                     continue
                 mac, action = item.mac, item.action
-                missed = datetime.now(timezone.utc) - datetime.fromisoformat(item.next_run) > timedelta(minutes=5)
+                timed = item.status.startswith('timed_')
+                missed = not timed and datetime.now(timezone.utc) - datetime.fromisoformat(item.next_run) > timedelta(minutes=5)
             success = False
             try:
                 if missed:
@@ -243,6 +266,10 @@ class Controller:
                 if not item.enabled:
                     continue
                 self.event(db, 'schedule_executed' if success else 'schedule_failed', mac, f'schedule:{sid}')
+                if timed and not success:
+                    item.status = 'timed_retry'
+                    item.next_run = (datetime.now(timezone.utc)+timedelta(seconds=60)).isoformat()
+                    continue
                 item.status = 'completed' if success else ('missed_after_outage' if missed else 'failed')
                 if item.local_time:
                     item.next_run = recurring_next(item.local_time, item.weekdays, item.timezone)
@@ -276,6 +303,7 @@ class Controller:
                     event.notified = delivered
 
     async def tick(self):
+        await self.connection.check()
         self.health['adguard'] = await self.adguard.status()
         loop = asyncio.get_running_loop()
         if not self.router_access_status()['router_access_paused'] and loop.time() >= self.next_poll:

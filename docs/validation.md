@@ -52,3 +52,44 @@ The updated backend suite passed all 17 tests both locally and in the deployed P
 Added Settings → Router access, with confirmed release and explicit resume. All **22 backend tests** and **9 Android unit tests** passed; both APKs built. Updated APKs installed on the test phone over wireless ADB, and all **3 instrumented tests** passed, including the new release confirmation/cancel UI, native navigation, live router and AdGuard checks.
 
 A live end-to-end test verified server logout, successful authentication from a separate Windows client, that client's verified logout, durable pause after a real backend container restart, and manual sync remaining paused. AdGuard stayed online while released. Explicit resume restored fresh router data. Normal monitoring was restored at the end of testing. No block/unblock or network configuration changes were made for this feature.
+
+
+## Connection health, timed blocks and AdGuard controls — 20 October 2026
+
+Version 1.2.0 deployed to the existing backend and installed on the Galaxy A35 through wireless ADB, preserving connection setup. A SQLite online backup was created before deployment. No schema migration was required; bounded health/history/latest-test data use the existing Config table, and timed recovery uses Schedule.
+
+- All **38 backend tests passed locally and inside the deployed Python 3.12 container**. Coverage includes connectivity classification/debounce, outage persistence and monitoring gaps, durable timed-unblock intent before writes, ambiguous write recovery, overdue retry/restart, release/resume behavior, protected-device/duration checks, speed-test concurrency/cooldown/failure/interruption, native AdGuard pause/resume and rule-preserving app-owned exceptions.
+- All **10 Android unit tests** passed. APKs and instrumentation APK compiled, and Android lint completed with **zero errors** (existing advisory warnings remain).
+- All **3 on-phone instrumented tests passed** on the final APK: live router/AdGuard checks, native navigation, release confirmation, connection-health/speed-test confirmation and cancellation, outage-history and AdGuard-control visibility, timed-block confirmation and cancellation, welcome and empty-state checks. Earlier runs exposed assumptions in test scrolling and matching unnamed devices; the final harness scrolls lazy lists and distinguishes device rows from the search input.
+- Actual server connectivity probes reported router reachable, public TLS reachable, normal DNS resolving and confirmed healthy state. Production outage classification was not tested by disconnecting the household network; outage/recovery fault cases were exercised in automated tests.
+- Live Cloudflare test transferred the bounded 30 MB payload and completed at **83.74 Mbps download, 46.13 Mbps upload and 99.2 ms median HTTP latency**. This is one server-path sample, not phone Wi-Fi speed or an ISP service guarantee.
+- Live AdGuard checks verified adding/removing a reserved .invalid test-domain exception, restoration of the app-managed exception baseline, a native one-minute protection pause followed by explicit resume, and existing-filter refresh (one list updated). Protection was enabled again at the end. DNS/DHCP/upstream configuration was not changed.
+- Live one-minute timed Wi-Fi block on the previously owner-approved MAC 62:72:29:91:09:b7 was verified, followed by automatic scheduled unblock without phone interaction. The test phone was left unblocked. No other device was selected for a live mutation.
+
+See [connection health](connection-health.md), [timed blocks](timed-blocks.md) and [AdGuard controls](adguard.md) for scope and failure behavior. Router monitoring remained active after tests; total household byte accounting remains unsupported.
+
+
+## Home-screen order and Overview navigation follow-up
+
+Moved the Connection healthy action below the AdGuard Home card. Home-screen Devices/Settings shortcuts now share bottom-navigation behavior. Returning to Overview no longer restores a saved secondary tab above the dashboard. The phone regression test checks AdGuard-before-health ordering and repeats View devices → Overview twice, including selected-tab and screen-content assertions.
+
+The updated APK was installed through wireless ADB. All three instrumented tests passed, including both repeated shortcut/Overview cycles, selected navigation states and home-card ordering.
+
+
+## Device list simplification
+
+Removed Status from the sorting toggle and Unknown from the device filters. The remaining Name and Recent options both keep online devices above offline devices, sorting within those groups. Default sorting is Name. Updated the existing filter checks and added a mixed online/offline ordering regression test; all 11 Android unit tests passed and the debug APK built successfully.
+
+
+## Settings grouping follow-up
+
+Grouped backend Connection, Router access, Monitoring (polling interval) and Diagnostics under a collapsed Advanced settings card at the bottom. Appearance, DNS protection, Connection health, Notifications and Network activity remain in the main list. Connection health uses the same rounded surface, typography and padding as the other settings cards, with no dropdown icon. Notification preferences and polling now have separate save actions. Advanced settings opens initially for setup or an already-paused router session.
+
+Updated APK installed on the Galaxy A35 over wireless ADB. All three instrumented tests passed, including opening Advanced settings to reach Router access and opening the Connection health card.
+
+
+## In-app updates and Android release automation
+
+Added a GitHub Releases updater with a banner above the app header, a safe debug-only preview at the top of Settings, bounded HTTPS downloads, SHA-256 verification and package/version/signing-identity checks before invoking Android's consent-based installation flow. The updater uses no backend credentials. Android debug/release builds and lint passed; 15 Android unit tests cover device workflows and updater metadata/source/version/size validation. Backend regression suite: 38 tests passed. Release signing retains the installed household app's certificate and is configured using encrypted GitHub Actions secrets; no private signing/deployment files are included in Git.
+
+The GitHub workflows check Android and backend source and publish only the signed Android APK, checksum and updater metadata. A release is drafted, populated and only then published. A separate opt-in phone test can download a newer published APK and verify its real checksum and signing identity without launching installation.

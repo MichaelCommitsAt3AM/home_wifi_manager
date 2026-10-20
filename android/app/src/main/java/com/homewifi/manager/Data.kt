@@ -41,7 +41,7 @@ data class Dashboard(val router_online: Boolean? = null, val last_sync: String? 
     val error: String? = null, val total: Int = 0, val connected: Int = 0, val unknown: Int = 0,
     val blocked: Int = 0, val monitoring: Boolean = false, val stale: Boolean = true,
     val router: RouterInfo = RouterInfo(), val events: List<Event> = emptyList(), val adguard: AdGuardStatus = AdGuardStatus(),
-    val router_access_paused: Boolean = false)
+    val router_access_paused: Boolean = false, val connection: ConnectionHealth = ConnectionHealth())
 data class RouterAccessStatus(val router_access_paused: Boolean = false, val router_logout_verified: Boolean = false,
     val router_access_paused_at: String? = null, val router_access_error: String? = null)
 data class RouterRelease(val confirmed: Boolean = true)
@@ -61,9 +61,26 @@ data class Schedule(val id: Int, val mac: String, val action: String, val timezo
 data class ScheduleDraft(val mac: String, val action: String, val timezone: String,
     val run_at: String? = null, val local_time: String = "", val weekdays: List<Int> = emptyList())
 data class DevicePatch(val alias: String? = null, val trusted: Boolean? = null, val protected: Boolean? = null)
-data class AccessChange(val blocked: Boolean, val confirmed: Boolean = true)
+data class AccessChange(val blocked: Boolean, val confirmed: Boolean = true, val minutes: Int? = null)
+data class Outage(val kind: String, val started_at: String, val ended_at: String? = null, val end_reason: String? = null)
+data class SpeedTestResult(val state: String = "idle", val started_at: String? = null, val finished_at: String? = null,
+    val download_mbps: Double? = null, val upload_mbps: Double? = null, val latency_ms: Double? = null, val error: String? = null)
+data class ConnectionHealth(val state: String = "checking", val stale: Boolean = true, val checked_at: String? = null,
+    val router_reachable: Boolean? = null, val internet_reachable: Boolean? = null, val dns_working: Boolean? = null,
+    val tls_connect_ms: Double? = null, val outages: List<Outage> = emptyList(), val speed_test: SpeedTestResult = SpeedTestResult())
+data class ProtectionChange(val enabled: Boolean, val minutes: Int = 5, val confirmed: Boolean = true)
+data class DomainException(val domain: String, val allowed: Boolean, val confirmed: Boolean = true)
+data class DomainExceptions(val domains: List<String> = emptyList())
+data class FilterRefresh(val updated: Int = 0)
 
 interface WifiApi {
+    @GET("api/connection") suspend fun connection(): ConnectionHealth
+    @POST("api/connection/check") suspend fun checkConnection(): ConnectionHealth
+    @POST("api/connection/speedtest") suspend fun speedTest(@Body body: RouterRelease = RouterRelease()): SpeedTestResult
+    @POST("api/adguard/protection") suspend fun protection(@Body body: ProtectionChange): AdGuardStatus
+    @POST("api/adguard/filters/refresh") suspend fun refreshFilters(@Body body: RouterRelease = RouterRelease()): FilterRefresh
+    @GET("api/adguard/exceptions") suspend fun exceptions(): DomainExceptions
+    @POST("api/adguard/exceptions") suspend fun exception(@Body body: DomainException): DomainExceptions
     @POST("api/router/access/release") suspend fun releaseRouterAccess(@Body body: RouterRelease = RouterRelease()): RouterAccessStatus
     @POST("api/router/access/resume") suspend fun resumeRouterAccess(): RouterAccessStatus
     @GET("api/adguard") suspend fun adguard(): AdGuardStatus

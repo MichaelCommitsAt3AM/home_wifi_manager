@@ -31,6 +31,8 @@ def system(tmp_path):
     adapter = MockRouter()
     app = create_app(settings(tmp_path, writes_enabled=True, verified_writes=True), adapter, False)
     c = app.state.controller
+    async def connection_probe(*_): return {'router_reachable': True, 'internet_reachable': True, 'dns_working': True, 'tls_connect_ms': 10}
+    c.connection.probe = connection_probe
     Base.metadata.create_all(c.sessions.kw['bind'])
     with TestClient(app) as client:
         yield client, c, adapter

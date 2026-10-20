@@ -30,6 +30,19 @@ private class MemoryDao : DeviceDao {
     override suspend fun insert(devices: List<CachedDevice>) { rows.value = devices }
 }
 private class TestApi : WifiApi {
+    var connectionStatus = ConnectionHealth(state = "healthy", stale = false)
+    var domainExceptions = DomainExceptions()
+    var lastChange: AccessChange? = null
+    override suspend fun connection() = connectionStatus
+    override suspend fun checkConnection() = connectionStatus
+    override suspend fun speedTest(body: RouterRelease) = SpeedTestResult(state = "running")
+    override suspend fun protection(body: ProtectionChange) = AdGuardStatus(configured = true, online = true, protection_enabled = body.enabled)
+    override suspend fun refreshFilters(body: RouterRelease) = FilterRefresh(updated = 1)
+    override suspend fun exceptions() = domainExceptions
+    override suspend fun exception(body: DomainException): DomainExceptions {
+        domainExceptions = DomainExceptions(if(body.allowed) domainExceptions.domains + body.domain else domainExceptions.domains - body.domain)
+        return domainExceptions
+    }
     var paused = false
     var syncCalls = 0
     override suspend fun releaseRouterAccess(body: RouterRelease): RouterAccessStatus { paused = true; return RouterAccessStatus(router_access_paused = true, router_logout_verified = true) }
@@ -50,6 +63,7 @@ private class TestApi : WifiApi {
     override suspend fun patch(mac: String, patch: DevicePatch): Device { devices = devices.map { if(it.mac == mac) it.copy(alias = patch.alias ?: it.alias) else it }; return devices.first { it.mac == mac } }
     override suspend fun access(mac: String, change: AccessChange): Device {
         failure?.let { throw it }
+        lastChange = change
         accessCalls++
         devices = devices.map { if(it.mac == mac) it.copy(blocked = change.blocked) else it }
         return devices.first { it.mac == mac }
@@ -105,6 +119,25 @@ class WorkflowTests {
         assertFalse(vm.state.value.settings.router_access_paused)
         assertTrue(vm.state.value.settings.writes_enabled)
         assertEquals("Router access resumed", vm.state.value.message)
+        vm.viewModelScope.cancel()
+    }
+
+    @Test fun timedBlockAndServerControlsSendExpectedRequests() = runTest(dispatcher) {
+        val api = TestApi(); val repo = Repository(object : ApiSource { override fun create() = api }, MemoryDao())
+        val vm = WifiViewModel(repo, TestConfig()); runCurrent()
+        vm.access(vm.state.value.devices.single(), 15); runCurrent()
+        assertEquals(15, api.lastChange!!.minutes)
+        assertTrue(api.lastChange!!.confirmed)
+        vm.connection(); runCurrent()
+        assertEquals("healthy", vm.state.value.connection.state)
+        vm.speedTest(); runCurrent()
+        assertEquals("running", vm.state.value.connection.speed_test.state)
+        vm.exception("example.com", true); runCurrent()
+        assertEquals(listOf("example.com"), vm.state.value.exceptions)
+        vm.exception("example.com", false); runCurrent()
+        assertTrue(vm.state.value.exceptions.isEmpty())
+        vm.refreshFilters(); runCurrent()
+        assertEquals("Filter refresh complete · 1 lists updated", vm.state.value.message)
         vm.viewModelScope.cancel()
     }
 
