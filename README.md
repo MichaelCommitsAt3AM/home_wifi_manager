@@ -15,6 +15,7 @@ The router adapter targets the Huawei HG8546M and is based on reverse-engineerin
 - AdGuard Home monitoring plus confirmed timed protection pauses, resume, filter refresh and domain exceptions.
 - Independent connection health and persisted outage history, with an on-demand server speed test.
 - Timed device blocks with durable automatic unblock and recovery after server/router outages.
+- Wi-Fi radio control: switch the 2.4 GHz mode (802.11b/g/n mixed, n only, and others) and channel from the phone, with a built-in channel analyzer that scans nearby networks and suggests the quietest channel.
 - Temporary "release router access" mode that pauses router writes so a technician can use the router dashboard.
 
 The server is the only component that holds router credentials and owns the serialized router session. The phone stores the backend token encrypted with the Android Keystore.
@@ -73,6 +74,7 @@ ROUTER_USERNAME=<router-username>
 ROUTER_PASSWORD='<router-password>'
 WRITES_ENABLED=false
 VERIFIED_WRITES=false
+VERIFIED_RADIO_WRITES=false
 PROTECTED_MACS=<server-mac>,<management-computer-mac>,<management-phone-mac>
 PROTECTED_IPS=<server-ip>,<management-computer-ip>,<management-phone-ip>
 POLL_SECONDS=60
@@ -115,32 +117,56 @@ It checks health, authenticated device/settings access, router status and reject
 
 ### 3. Make the backend reachable over HTTPS
 
-Compose binds the backend to `127.0.0.1:18765`. Configure a TLS reverse proxy or private overlay network before connecting Android. With Tailscale installed and authenticated on the server, one option is:
+Compose binds the backend to `127.0.0.1:18765`, so the phone cannot reach it until you put HTTPS in front of it. **This was developed and tested with Tailscale** (`tailscale serve`), and that is the only configuration the project has been validated with. With Tailscale installed and authenticated on the server:
 
 ```bash
 sudo tailscale serve --bg --https=8443 http://127.0.0.1:18765
 sudo tailscale serve status
 ```
 
-Complete any HTTPS enablement prompt from Tailscale. Use the actual HTTPS address printed by Serve, which has this form:
+Complete any HTTPS enablement prompt from Tailscale (this turns on certificates for your tailnet). Use the HTTPS address printed by Serve, which has this form:
 
 ```text
 https://<server-name>.<tailnet-name>.ts.net:8443/
 ```
 
-Connect the phone to the same tailnet and ensure its access rules permit the connection. With this configuration, Tailscale must be connected on the phone even while it is on home Wi-Fi. No public port forwarding is needed.
+Install Tailscale on the phone and sign in to the same tailnet. Tailscale must be connected on the phone even while it is on home Wi-Fi, because the address is a tailnet name. No public port forwarding is needed.
 
-### 4. Connect the Android app
+#### What the app accepts as a backend address
 
-If the app is already installed, keep it and proceed directly to connection settings. Otherwise, download the signed APK from [the latest GitHub release](https://github.com/MichaelCommitsAt3AM/home_wifi_manager/releases/latest) and install it on Android 8 or newer, granting installation permission to the browser or file manager when prompted.
+These rules come from the app's code (`Data.kt`, `AndroidManifest.xml`), so other setups can be judged without guessing:
 
-1. Open **Settings → Advanced settings → Connection**.
-2. Enter the backend's HTTPS address and the same `API_TOKEN` configured in `.env`.
-3. Tap **Save & test**.
-4. Confirm that Overview loads devices, AdGuard status (when configured), and connection health. Outage history starts accumulating after the backend begins monitoring.
-5. Grant notification permission if you want background notifications; Android may delay background checks.
+| Requirement | Why |
+| --- | --- |
+| Must start with `https://` and include a host name or IP; a port and trailing `/` are fine. | The app rejects anything else, and Android cleartext traffic is disabled (`usesCleartextTraffic=false`). Plain `http://` addresses, including `http://192.168.x.x`, cannot work. |
+| The server's certificate must be trusted by Android's built-in certificate authorities and match the host name in the address. | The app has no custom trust settings, so self-signed certificates, a private CA, or a certificate you installed on the phone are not accepted. The app reports an HTTPS certificate error. |
+| The address must serve the API directly, without redirecting to another URL. | The HTTP client does not follow redirects. |
+| No username, query string or fragment in the address. | Rejected by validation. |
+| The API token must be at least 32 characters. | Rejected by validation. |
+| The phone must be able to reach the address from wherever you use the app. | For Tailscale, the phone must be connected to the tailnet. |
 
-The router and AdGuard passwords are never entered on the phone. App updates are available through the in-app update banner; manual update checks are under **Settings → Advanced settings → Diagnostics**.
+Other setups that satisfy these rules should work but are **untested**: for example a reverse proxy such as Caddy or nginx with a real certificate for a domain you own (use a DNS challenge if the server is only reachable on your LAN), or a Cloudflare Tunnel. Do not expose the backend directly to the public internet: the API token is the only barrier in front of a service that controls your router. A path prefix (for example `https://host/wifi/`) only works if your proxy strips the prefix, because the backend serves at the root.
+
+### 4. Install and connect the Android app
+
+Android 8.0 or newer is required.
+
+1. Open [the latest GitHub release](https://github.com/MichaelCommitsAt3AM/home_wifi_manager/releases/latest) on the phone and download the `.apk` asset. Optionally compare its SHA-256 with `SHA256SUMS` from the same release.
+2. Open the downloaded file. When Android asks, allow your browser or file manager to install unknown apps, then install. This is a direct download (sideload), not a Play Store app.
+3. Open the app. On first launch, **Settings** shows a *Connect to your home server* card. (Later, the same fields are under **Settings → Advanced → Server connection**.)
+4. Enter the backend's HTTPS address (see the table above) and the same `API_TOKEN` configured in `.env`, then tap **Save and test**.
+5. Confirm that Overview loads devices and connection health (and AdGuard status, if configured). Outage history starts accumulating after the backend begins monitoring.
+6. Optionally allow notifications; Android may delay background checks.
+
+Router and AdGuard passwords are never entered on the phone, and the token is stored encrypted with the Android Keystore. App updates arrive through the in-app update banner; manual checks are under **Settings → Advanced → Diagnostics**. If the app says it cannot reach the backend, see [troubleshooting](docs/troubleshooting.md): the usual causes are Tailscale not connected on the phone, a certificate that does not match the address, or router access still released.
+
+#### Wi-Fi radio (mode and channel)
+
+**Settings → Wi-Fi radio** shows the router's current mode and channel. Changing them restarts the router's Wi-Fi, so every device (including your phone, if it is on that Wi-Fi) disconnects for about a minute; the app asks for confirmation and reports success only after the router confirms the new values.
+
+- The **Channel analyzer** scans nearby 2.4 GHz networks from the phone and recommends the least crowded channel. Android requires the *location* permission for Wi-Fi scans; the app does not store or send your location. Android also limits scans to about four every two minutes.
+- Changes are disabled by default on the server. Set `VERIFIED_RADIO_WRITES=true` (together with `WRITES_ENABLED=true`) in `.env` after you have tried one change on your router, then recreate the backend. Viewing settings and scanning work without it.
+- Choosing "n only" disconnects older 802.11b/g-only devices.
 
 ### 5. Enable router changes after validation
 
@@ -151,6 +177,8 @@ After validation, set these values in `.env`:
 ```dotenv
 WRITES_ENABLED=true
 VERIFIED_WRITES=true
+# Optional: allow changing Wi-Fi mode/channel from the app
+VERIFIED_RADIO_WRITES=true
 ```
 
 Apply changed environment values by recreating the service:
@@ -189,7 +217,7 @@ Notes:
 
 ## Android development
 
-Requires JDK 21 and Android SDK platform 36.
+Requires JDK 21 (newer JDKs such as 25 are not supported by this Gradle version; set `JAVA_HOME`) and Android SDK platform 36.
 
 ```powershell
 cd android
@@ -197,6 +225,18 @@ cd android
 ```
 
 The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Instrumented tests are separate from compilation and need a connected device or emulator.
+
+To build a signed release APK locally, provide your keystore through the environment variables the Gradle `release` build reads (never commit them), then run `:app:assembleRelease`:
+
+```powershell
+$env:ANDROID_KEYSTORE_PATH = "C:\path\to\release.p12"
+$env:ANDROID_KEYSTORE_PASSWORD = "<password>"
+$env:ANDROID_KEY_ALIAS = "<alias>"
+$env:ANDROID_KEY_PASSWORD = "<password>"
+.\gradlew.bat :app:assembleRelease
+```
+
+The APK is written to `android/app/build/outputs/apk/release/app-release.apk`. A release signed with the same key as the installed app updates it in place and keeps its settings; a different key requires uninstalling first. Install over USB or wireless debugging with `adb install -r app-release.apk`.
 
 ## Deployment
 
@@ -222,6 +262,8 @@ Check [validation](docs/validation.md) for the current state of builds and live 
 
 
 ## Android releases
+
+Each release is published at [GitHub Releases](https://github.com/MichaelCommitsAt3AM/home_wifi_manager/releases) with the APK, `SHA256SUMS` and `update.json`. To publish a new version: bump `versionCode`/`versionName` in `android/app/build.gradle.kts`, add `docs/releases/<version>.md`, push to `main`, wait for checks, then push a `v<version>` tag. The backend is not shipped as a release artifact; deploy it from the repository as described above.
 
 The Android APK is built and signed by GitHub Actions. Pushes and pull requests run build, unit-test and lint checks; version tags publish a signed APK, SHA256SUMS and updater metadata. See [release and signing instructions](docs/android-releases.md).
 

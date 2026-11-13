@@ -12,8 +12,8 @@ android {
         applicationId = "com.homewifi.manager"
         minSdk = 26
         targetSdk = 36
-        versionCode = providers.gradleProperty("appVersionCode").orElse("4").get().toInt()
-        versionName = providers.gradleProperty("appVersionName").orElse("1.3.0").get()
+        versionCode = providers.gradleProperty("appVersionCode").orElse("5").get().toInt()
+        versionName = providers.gradleProperty("appVersionName").orElse("1.4.0").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
