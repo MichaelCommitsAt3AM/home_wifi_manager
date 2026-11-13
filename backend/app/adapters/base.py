@@ -55,6 +55,12 @@ class RouterAdapter(ABC):
     async def set_blocked(self, device: Observation, blocked: bool): ...
     @abstractmethod
     async def logout(self) -> bool: ...
+    async def get_radio(self) -> dict:
+        raise CapabilityError('Radio settings are not supported by this router adapter')
+
+    async def set_radio(self, standard: str | None, channel: int | None):
+        raise CapabilityError('Radio settings are not supported by this router adapter')
+
     async def resume(self):
         await self.authenticate()
     @abstractmethod

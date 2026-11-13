@@ -51,33 +51,31 @@ class ConnectedBackendTest {
             assertTrue("Ad domain blocking must be observed", adguard.blocking_observed == true)
             println("REAL_BACKEND_VERIFIED known=${devices.size} online=${devices.count { it.online }}")
         }
-        compose.waitUntil(60_000) { compose.onAllNodesWithText("Router online").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Your home network").assertIsDisplayed()
-        compose.onNodeWithText("AdGuard Home").assertIsDisplayed()
-        val adguardBounds = compose.onNodeWithText("AdGuard Home").fetchSemanticsNode().boundsInRoot
-        val connectionBounds = compose.onNodeWithText("Connection healthy").fetchSemanticsNode().boundsInRoot
-        assertTrue("Connection health belongs below AdGuard", connectionBounds.top > adguardBounds.bottom)
+        compose.waitUntil(60_000) { compose.onAllNodesWithText("Everything looks good").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("See all devices").assertIsDisplayed()
+        compose.onNodeWithText("Ad blocking").assertIsDisplayed()
+        val adguardBounds = compose.onNodeWithText("Ad blocking").fetchSemanticsNode().boundsInRoot
+        val connectionBounds = compose.onNodeWithText("Internet is working").fetchSemanticsNode().boundsInRoot
+        assertTrue("Internet status sits above ad blocking", adguardBounds.top > connectionBounds.bottom)
         repeat(2) {
-            compose.onNodeWithText("View devices").performClick()
-            compose.onNodeWithText("Your devices").assertIsDisplayed()
+            compose.onNodeWithText("See all devices").performClick()
+            compose.onNodeWithText("Search devices").assertIsDisplayed()
             compose.onNode(isSelectable() and hasAnyDescendant(hasContentDescription("Devices")), useUnmergedTree = true).assertIsSelected()
-            compose.onNodeWithContentDescription("Overview", useUnmergedTree = true).performClick()
-            compose.onNodeWithText("Your home network").assertIsDisplayed()
-            compose.onNode(isSelectable() and hasAnyDescendant(hasContentDescription("Overview")), useUnmergedTree = true).assertIsSelected()
+            compose.onNodeWithContentDescription("Home", useUnmergedTree = true).performClick()
+            compose.onNodeWithText("See all devices").assertIsDisplayed()
+            compose.onNode(isSelectable() and hasAnyDescendant(hasContentDescription("Home")), useUnmergedTree = true).assertIsSelected()
         }
         compose.onNodeWithContentDescription("Devices", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Your devices").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Blocked", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Access restrictions").assertIsDisplayed()
+        compose.onNodeWithText("Search devices").assertIsDisplayed()
         compose.onNodeWithContentDescription("Settings", useUnmergedTree = true).performClick()
-        scrollTo("Preferences").assertIsDisplayed()
-        val beforeBanner = compose.onNodeWithText("Preferences").fetchSemanticsNode().boundsInRoot.top
+        scrollTo("Appearance").assertIsDisplayed()
+        val beforeBanner = compose.onNodeWithText("Appearance").fetchSemanticsNode().boundsInRoot.top
         compose.onNodeWithContentDescription("Preview update banner").performClick()
         compose.onNodeWithText("Update available").assertIsDisplayed()
         val bannerBounds = compose.onNodeWithText("Update available").fetchSemanticsNode().boundsInRoot
         val headerBounds = compose.onNodeWithText("Home WiFi").fetchSemanticsNode().boundsInRoot
         assertTrue("Update notice belongs above the app header", bannerBounds.bottom < headerBounds.top)
-        val afterBanner = compose.onNodeWithText("Preferences").fetchSemanticsNode().boundsInRoot.top
+        val afterBanner = compose.onNodeWithText("Appearance").fetchSemanticsNode().boundsInRoot.top
         assertTrue("The update banner pushes app content down", afterBanner > beforeBanner)
         compose.onNodeWithText("Update").performClick()
         compose.onNodeWithText("Preview · no download will start").assertIsDisplayed()
@@ -85,24 +83,24 @@ class ConnectedBackendTest {
         compose.onNodeWithText("Update available").assertDoesNotExist()
         compose.onNodeWithContentDescription("Preview update banner").assertIsOff()
         compose.onNodeWithContentDescription("Activity", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithText("Backend HTTPS address").assertDoesNotExist()
-        scrollTo("Advanced settings").performClick()
+        compose.onNodeWithText("Server address (HTTPS)").assertDoesNotExist()
+        scrollTo("Advanced").performClick()
         scrollTo("Router access").performClick()
         scrollTo("Release router access").performClick()
         compose.onNodeWithText("Release router access?").assertIsDisplayed()
         compose.onNodeWithText("Cancel").performClick()
-        scrollTo("Network activity").performClick()
-        compose.onNodeWithText("Network timeline").assertIsDisplayed()
+        scrollTo("Activity").performClick()
+        compose.onNode(hasText("days on your network", substring = true)).assertIsDisplayed()
         compose.onNodeWithContentDescription("Back").performClick()
-        scrollTo("Preferences").assertIsDisplayed()
-        scrollTo("Connection health").performClick()
-        scrollTo("Server speed test").assertIsDisplayed()
+        scrollTo("Appearance").assertIsDisplayed()
+        scrollTo("Internet").performClick()
+        scrollTo("Speed test").assertIsDisplayed()
         scrollTo("Run speed test").performClick()
         compose.onNodeWithText("Test the server connection?").assertIsDisplayed()
         compose.onNodeWithText("Cancel").performClick()
-        scrollTo("Outage history").assertIsDisplayed()
+        scrollTo("Outages").assertIsDisplayed()
         compose.onNodeWithContentDescription("Back").performClick()
-        scrollTo("DNS protection").performClick()
+        scrollTo("Ad blocking").performClick()
         scrollTo("Allowed domains").assertIsDisplayed()
         scrollTo("Refresh filter lists").assertIsDisplayed()
         // Read-only UI verification: never press the live management button.
@@ -112,11 +110,11 @@ class ConnectedBackendTest {
             compose.onNodeWithContentDescription("Devices", useUnmergedTree = true).performClick()
             compose.onNode(hasSetTextAction()).performTextReplacement(testDevice.mac)
             compose.onNode(hasText(testDevice.name) and !hasSetTextAction()).performClick()
-            scrollTo("Block device")
-            compose.waitUntil(20_000) { compose.onAllNodes(hasText("Block device") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Block device").assertIsEnabled()
+            scrollTo("Pause internet")
+            compose.waitUntil(20_000) { compose.onAllNodes(hasText("Pause internet") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Pause internet").assertIsEnabled()
             scrollTo("15 min").performClick()
-            compose.onNodeWithText("Block for 15 minutes?").assertIsDisplayed()
+            compose.onNode(hasText("for 15 minutes?", substring = true)).assertIsDisplayed()
             compose.onNodeWithText("Cancel").performClick()
         }
     }

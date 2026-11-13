@@ -35,6 +35,12 @@ class AccessChange(BaseModel):
     minutes: int | None = Field(default=None, ge=1, le=1440)
 
 
+class RadioChange(BaseModel):
+    standard: str | None = Field(default=None, pattern='^(11b|11g|11n|11bg|11bgn)$')
+    channel: int | None = Field(default=None, ge=0, le=13)
+    confirmed: bool
+
+
 class RouterRelease(BaseModel):
     confirmed: bool
 
@@ -186,6 +192,34 @@ def create_app(settings=None, adapter=None, start_scheduler=True):
     @app.post('/api/router/access/resume', dependencies=[Depends(auth)])
     async def resume_router_access():
         return await controller.resume_router_access()
+
+    @app.get('/api/wifi/radio', dependencies=[Depends(auth)])
+    async def wifi_radio():
+        async with controller.lock:
+            controller.require_router_access()
+            radio = await controller.adapter.get_radio()
+        return {**radio, 'writes_enabled': settings.writes_enabled and settings.verified_radio_writes}
+
+    @app.put('/api/wifi/radio', dependencies=[Depends(auth)])
+    async def change_wifi_radio(body: RadioChange):
+        if not body.confirmed:
+            raise HTTPException(422, 'Explicit confirmation is required: Wi-Fi restarts and clients disconnect')
+        if body.standard is None and body.channel is None:
+            raise HTTPException(422, 'Choose a mode or channel')
+        async with controller.lock:
+            controller.require_router_access()
+            if not (settings.writes_enabled and settings.verified_radio_writes):
+                raise CapabilityError('Wi-Fi radio changes are disabled until live validation')
+            try:
+                radio = await controller.adapter.set_radio(body.standard, body.channel)
+            except RouterError:
+                with sessions.begin() as db:
+                    controller.event(db, 'wifi_radio_failed')
+                raise
+            with sessions.begin() as db:
+                controller.event(db, 'wifi_radio_changed',
+                                 detail=f"{radio['standard']} ch {'auto' if radio['auto_channel'] else radio['channel']}")
+        return {**radio, 'writes_enabled': True}
 
     @app.get('/api/devices', dependencies=[Depends(auth)])
     async def devices():

@@ -48,6 +48,10 @@ private class TestApi : WifiApi {
     override suspend fun releaseRouterAccess(body: RouterRelease): RouterAccessStatus { paused = true; return RouterAccessStatus(router_access_paused = true, router_logout_verified = true) }
     override suspend fun resumeRouterAccess(): RouterAccessStatus { paused = false; return RouterAccessStatus() }
     override suspend fun adguard() = AdGuardStatus()
+    var radioState = RadioSettings(standard = "11n", channel = 11, writes_enabled = true)
+    var lastRadioChange: RadioChange? = null
+    override suspend fun radio() = radioState
+    override suspend fun radio(change: RadioChange): RadioSettings { lastRadioChange = change; radioState = radioState.copy(standard = change.standard ?: radioState.standard, channel = change.channel ?: radioState.channel); return radioState }
     var devices = listOf(Device("02:00:00:00:00:02", hostname = "Example", online = true))
     var failure: Exception? = null
     var accessCalls = 0
@@ -138,6 +142,18 @@ class WorkflowTests {
         assertTrue(vm.state.value.exceptions.isEmpty())
         vm.refreshFilters(); runCurrent()
         assertEquals("Filter refresh complete · 1 lists updated", vm.state.value.message)
+        vm.viewModelScope.cancel()
+    }
+
+    @Test fun wifiRadioChangeIsConfirmedAndShownFromRouterReply() = runTest(dispatcher) {
+        val api = TestApi(); val repo = Repository(object : ApiSource { override fun create() = api }, MemoryDao())
+        val vm = WifiViewModel(repo, TestConfig()); runCurrent()
+        vm.loadRadio(); runCurrent()
+        assertEquals("11n", vm.state.value.radio!!.standard)
+        vm.setRadio("11bgn", 6); runCurrent()
+        assertTrue(api.lastRadioChange!!.confirmed)
+        assertEquals("11bgn", vm.state.value.radio!!.standard)
+        assertEquals(6, vm.state.value.radio!!.channel)
         vm.viewModelScope.cancel()
     }
 

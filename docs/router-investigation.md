@@ -84,3 +84,12 @@ Read-only inspection of the authenticated root dashboard, its menu, WAN/Ethernet
 LAN/WLAN counters measure interface traffic, including local transfers. Summing them can count a local transfer at both interfaces and cannot be presented as total Internet use. Counter widths, reset behavior and wrap behavior were not validated. No undocumented shell, SNMP service, or alternate privileged account was enabled or tested. These findings establish the exposed dashboard's limitations, not that the firmware has no internal WAN counters.
 
 No usage tracking was implemented. Reliable whole-home Internet usage requires a counter on the actual Internet forwarding path; DNS requests observed by AdGuard are not a measurement of transferred bytes.
+
+## Wi-Fi radio settings — 13 November 2026 (read-only)
+
+Inspected `/html/amp/wlanadv/WlanAdvance.asp` (WLAN Advanced Configuration) after the owner signed in; nothing was submitted and the session was logged out. Single 2.4 GHz radio (`curWlanChipType5G` empty, `Wlan11acFlag=0`), `WLANConfiguration.1`, country `KE`.
+
+- Mode `X_HW_Standard` (current `11n`): `11b`, `11g`, `11n`, `11bg`, `11bgn`.
+- Channel (current 11, `AutoChannelEnable=0`): Automatic or 1–13. Width `X_HW_HT20`: 0 auto 20/40, 1 20 MHz (current), 2 40 MHz.
+- Page's own apply code posts `set.cgi?x=<obj>.X_HW_AdvanceConf&y=<obj>&...` with `y.Channel`, `y.AutoChannelEnable`, `y.X_HW_Standard`, `y.X_HW_HT20`, `y.TransmitPower`, `y.RegulatoryDomain`, `x.DtimPeriod/BeaconPeriod/RTSThreshold/FragThreshold`, and the per-page `onttoken`. The remaining optional parameters (WDS objects, guard interval) were not captured. The adapter sends the minimal set above, echoing current values, and re-reads the page to verify. **A live change has not been performed yet**; `VERIFIED_RADIO_WRITES` stays false until it is.
+

@@ -1,10 +1,8 @@
 package com.homewifi.manager
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -22,136 +20,161 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.NumberFormat
 
-val NetworkDarkColors = darkColorScheme(
-    primary = Color(0xFF7DE3C0), onPrimary = Color(0xFF052F26), primaryContainer = Color(0xFF153E34), onPrimaryContainer = Color(0xFFB9F5DF),
-    secondary = Color(0xFFA8BED5), secondaryContainer = Color(0xFF203143), onSecondaryContainer = Color(0xFFDCEAF6),
-    tertiary = Color(0xFFE6C38A), tertiaryContainer = Color(0xFF453923), onTertiaryContainer = Color(0xFFFFDFAB),
-    background = Color(0xFF0C121B), onBackground = Color(0xFFEDF2F8), surface = Color(0xFF141E2B),
-    onSurface = Color(0xFFEDF2F8), surfaceVariant = Color(0xFF202D3C), onSurfaceVariant = Color(0xFF92A5BA),
-    outline = Color(0xFF3B4D60), outlineVariant = Color(0xFF233242), surfaceContainer = Color(0xFF141E2B),
-    surfaceContainerLow = Color(0xFF111A25), surfaceContainerHigh = Color(0xFF1C2938)
-)
+// Warm, home-like palette: cream and terracotta in light mode, warm charcoal in dark mode.
 val NetworkLightColors = lightColorScheme(
-    primary = Color(0xFF087C60), onPrimary = Color.White, primaryContainer = Color(0xFFD6F5E8), onPrimaryContainer = Color(0xFF074D3B),
-    secondary = Color(0xFF45627B), secondaryContainer = Color(0xFFE1ECF5), onSecondaryContainer = Color(0xFF243D54),
-    background = Color(0xFFF5F8FA), onBackground = Color(0xFF162C3B), surface = Color.White,
-    onSurface = Color(0xFF162C3B), surfaceVariant = Color(0xFFEAF0F5), onSurfaceVariant = Color(0xFF64798A),
-    outline = Color(0xFFB3C2CD), outlineVariant = Color(0xFFDFE7EC), surfaceContainer = Color.White,
-    surfaceContainerLow = Color(0xFFF0F5F8), surfaceContainerHigh = Color(0xFFEAF0F5)
+    primary = Color(0xFFBF4E1E), onPrimary = Color.White, primaryContainer = Color(0xFFFBE2D2), onPrimaryContainer = Color(0xFF55200A),
+    secondary = Color(0xFF6E5B49), onSecondary = Color.White, secondaryContainer = Color(0xFFF2E6D6), onSecondaryContainer = Color(0xFF3B2D20),
+    tertiary = Color(0xFF8A6412), onTertiary = Color.White, tertiaryContainer = Color(0xFFF8EBC9), onTertiaryContainer = Color(0xFF4A3406),
+    background = Color(0xFFFBF6EE), onBackground = Color(0xFF2B2118), surface = Color.White, onSurface = Color(0xFF2B2118),
+    surfaceVariant = Color(0xFFF1E8DA), onSurfaceVariant = Color(0xFF6B5D4F),
+    outline = Color(0xFFC9BAA6), outlineVariant = Color(0xFFEADFCF),
+    error = Color(0xFFB3261E), onError = Color.White, errorContainer = Color(0xFFFADCD6), onErrorContainer = Color(0xFF410E0B),
+    inverseSurface = Color(0xFF3A2F26), inverseOnSurface = Color(0xFFF8EFE4), inversePrimary = Color(0xFFF2A07B),
+    surfaceContainer = Color.White, surfaceContainerLow = Color(0xFFF6EFE4), surfaceContainerHigh = Color(0xFFF1E8DA)
 )
+val NetworkDarkColors = darkColorScheme(
+    primary = Color(0xFFF2A07B), onPrimary = Color(0xFF4A1B07), primaryContainer = Color(0xFF5C2A12), onPrimaryContainer = Color(0xFFFFDBCB),
+    secondary = Color(0xFFD9C5AF), onSecondary = Color(0xFF3B2D20), secondaryContainer = Color(0xFF4A3C2F), onSecondaryContainer = Color(0xFFF2E6D6),
+    tertiary = Color(0xFFE6C47A), onTertiary = Color(0xFF3F2E05), tertiaryContainer = Color(0xFF4F3B10), onTertiaryContainer = Color(0xFFF8EBC9),
+    background = Color(0xFF17120E), onBackground = Color(0xFFF3EBE1), surface = Color(0xFF221B15), onSurface = Color(0xFFF3EBE1),
+    surfaceVariant = Color(0xFF30271F), onSurfaceVariant = Color(0xFFC2B2A0),
+    outline = Color(0xFF75655A), outlineVariant = Color(0xFF3A3027),
+    error = Color(0xFFFFB4AB), onError = Color(0xFF601410), errorContainer = Color(0xFF5E1F1A), onErrorContainer = Color(0xFFFFDAD6),
+    inverseSurface = Color(0xFFF3EBE1), inverseOnSurface = Color(0xFF2B2118), inversePrimary = Color(0xFFBF4E1E),
+    surfaceContainer = Color(0xFF221B15), surfaceContainerLow = Color(0xFF1B1511), surfaceContainerHigh = Color(0xFF30271F)
+)
+// Slightly larger than before: nothing below 12sp so it stays readable for the whole household.
 val NetworkTypography = Typography(
-    headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 32.sp, lineHeight = 38.sp, letterSpacing = (-1).sp),
-    headlineMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 27.sp, lineHeight = 33.sp, letterSpacing = (-.6).sp),
-    titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 21.sp, lineHeight = 27.sp, letterSpacing = (-.4).sp),
-    titleMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp),
-    titleSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
-    bodyLarge = TextStyle(fontSize = 15.sp, lineHeight = 22.sp),
-    bodyMedium = TextStyle(fontSize = 13.sp, lineHeight = 19.sp),
-    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 18.sp),
-    labelMedium = TextStyle(fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 14.sp)
+    headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 34.sp, lineHeight = 40.sp, letterSpacing = (-1).sp),
+    headlineMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = (-.6).sp),
+    titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp, letterSpacing = (-.4).sp),
+    titleMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 23.sp),
+    titleSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 21.sp),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 23.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
+    labelLarge = TextStyle(fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
+    labelMedium = TextStyle(fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
+    labelSmall = TextStyle(fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp)
 )
 val NetworkShapes = Shapes(extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp), extraLarge = RoundedCornerShape(28.dp))
 
-@Composable
-fun StatusPill(label: String, active: Boolean, modifier: Modifier = Modifier) {
-    val tint = if(active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(modifier.background(tint.copy(alpha = .09f), CircleShape).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(5.dp).background(tint, CircleShape))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = tint)
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Overview(state: UiState, onDevices: () -> Unit, onSettings: () -> Unit, onRefresh: () -> Unit, onHealth: () -> Unit = {}) {
+fun Overview(state: UiState, onDevices: () -> Unit, onSettings: () -> Unit, onRefresh: () -> Unit, onHealth: () -> Unit = {}, onPaused: () -> Unit = {}) {
+    val colors = MaterialTheme.colorScheme
+    val paused = state.settings.router_access_paused
+    val routerOnline = state.dashboard.router_online
+    val tone = when { paused -> colors.onSurfaceVariant; routerOnline == true -> onlineColor(); routerOnline == false -> colors.error; else -> colors.onSurfaceVariant }
+    val headline = when { paused -> "Monitoring paused"; routerOnline == true -> "Everything looks good"; routerOnline == false -> "Can't reach your router"; else -> "Checking your network…" }
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            item { Text("Your home network", style = MaterialTheme.typography.headlineMedium) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (!state.authenticated) item {
-                EmptyState(Icons.Default.Router, "Welcome home", "Connect your private backend to see your network.") { Button(onClick = onSettings) { Text("Set up connection") } }
+                EmptyState(Icons.Default.Home, "Welcome home", "Connect to your home server to see who's on your network.") { Button(onClick = onSettings) { Text("Set up connection") } }
             }
             if (state.loading && state.devices.isEmpty()) item { Skeleton() }
             if (state.authenticated || state.devices.isNotEmpty()) {
                 item {
-                    Card(onClick = onDevices, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                            StatusPill(if(state.settings.router_access_paused) "Access released" else if(state.dashboard.router_online == true) "Router online" else if(state.dashboard.router_online == false) "Router unavailable" else "Awaiting sync", state.dashboard.router_online == true && !state.settings.router_access_paused)
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(state.dashboard.connected.toString(), style = MaterialTheme.typography.headlineLarge, fontSize = 52.sp, lineHeight = 56.sp, color = MaterialTheme.colorScheme.primary)
-                                Text(if(state.settings.router_access_paused) "last known connected" else "devices connected", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SoftCard(Modifier.fillMaxWidth(), onClick = onDevices) {
+                        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StatusDot(tone, 10.dp)
+                                Text(headline, style = MaterialTheme.typography.titleSmall, color = tone)
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(state.dashboard.connected.toString(), style = MaterialTheme.typography.headlineLarge, fontSize = 60.sp, lineHeight = 64.sp, color = colors.primary)
+                                Text(if (paused) "devices at last check" else if (state.dashboard.connected == 1) "device online" else "devices online",
+                                    style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("View devices", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                                Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("See all devices", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = colors.primary)
+                                Icon(Icons.Default.ChevronRight, null, Modifier.size(20.dp), tint = colors.primary)
                             }
                         }
                     }
                 }
+                if (state.dashboard.unknown > 0 && !paused) item {
+                    SoftCard(Modifier.fillMaxWidth(), onClick = onDevices, color = colors.tertiaryContainer, border = colors.tertiaryContainer) {
+                        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            IconBadge(Icons.Default.DevicesOther, colors.onTertiaryContainer)
+                            Column(Modifier.weight(1f)) {
+                                val n = state.dashboard.unknown
+                                Text(if (n == 1) "1 new device joined" else "$n new devices joined", style = MaterialTheme.typography.titleSmall, color = colors.onTertiaryContainer)
+                                Text("Make sure you recognize ${if (n == 1) "it" else "them"}.", style = MaterialTheme.typography.bodySmall, color = colors.onTertiaryContainer)
+                            }
+                            Icon(Icons.Default.ChevronRight, null, Modifier.size(20.dp), tint = colors.onTertiaryContainer)
+                        }
+                    }
+                }
+                if (state.dashboard.blocked > 0) item {
+                    val n = state.dashboard.blocked
+                    SettingsRow(Icons.Default.PauseCircle, if (n == 1) "1 device paused" else "$n devices paused", "Their internet access is turned off", onPaused)
+                }
+                item {
+                    val healthy = state.connection.state == "healthy" && !state.connection.stale
+                    SettingsRow(Icons.Default.Public, "Internet", if (state.connection.stale) "Checking…" else healthLabel(state.connection.state), onHealth)
+                }
                 if (state.dashboard.adguard.configured) {
                     item { AdGuardCard(state.dashboard.adguard, onDetails = onSettings) }
                 }
-                item { TextButton(onClick = onHealth) {
-                    Icon(Icons.Default.NetworkCheck, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                    Text(if(state.connection.stale) "Connection health · checking" else healthLabel(state.connection.state))
-                } }
-                item { Text("Updated ${timestamp(state.dashboard.last_sync)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                item { Text("Last updated ${timestamp(state.dashboard.last_sync)}", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant) }
             }
         }
     }
+}
+
+private fun adguardSummary(status: AdGuardStatus, healthy: Boolean): String = when {
+    healthy -> "Protection is on"
+    status.authentication_required -> "Sign-in needed"
+    !status.configured -> "Not set up"
+    status.online == true && !status.protection_enabled -> "Paused"
+    else -> "Needs attention"
 }
 
 @Composable
 fun AdGuardCard(status: AdGuardStatus, expanded: Boolean = false, onDetails: () -> Unit = {}) {
     val healthy = status.online == true && status.running && status.protection_enabled && status.filtering_enabled
-    val tint = if(healthy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val tint = if (healthy) onlineColor() else MaterialTheme.colorScheme.onSurfaceVariant
     if (!expanded) {
-        Card(onClick = onDetails, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Icon(Icons.Default.VerifiedUser, null, Modifier.size(24.dp), tint = tint)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("AdGuard Home", style = MaterialTheme.typography.titleSmall)
-                    Text(if(healthy) "Protection active" else if(status.authentication_required) "Sign-in needed" else if(!status.configured) "Not connected" else if(status.online == true && !status.protection_enabled) "Protection paused" else "Needs attention", style = MaterialTheme.typography.bodySmall, color = tint)
-                }
-                Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        SettingsRow(Icons.Default.VerifiedUser, "Ad blocking", adguardSummary(status, healthy), onDetails)
         return
     }
-    Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().border(1.dp, if(healthy) tint.copy(alpha = .22f) else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(22.dp)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                Surface(shape = RoundedCornerShape(13.dp), color = tint.copy(alpha = .1f)) { Icon(Icons.Default.VerifiedUser, null, Modifier.padding(10.dp).size(21.dp), tint = tint) }
-                Column(Modifier.weight(1f)) { Text("AdGuard Home", style = MaterialTheme.typography.titleSmall)
-                    Text(if(healthy) "DNS protection active" else if(status.authentication_required) "Dashboard login required" else if(!status.configured) "Connect your DNS protection" else if(status.online == true && !status.protection_enabled) "Protection paused" else "Protection needs attention", style = MaterialTheme.typography.bodySmall, color = tint) }
-                Icon(if(healthy) Icons.Default.CheckCircle else Icons.Default.Info, null, Modifier.size(18.dp), tint = tint)
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconBadge(Icons.Default.VerifiedUser, tint)
+            Column(Modifier.weight(1f)) {
+                Text("Ad blocking", style = MaterialTheme.typography.titleSmall)
+                Text(adguardSummary(status, healthy), style = MaterialTheme.typography.bodySmall, color = tint)
             }
-            if(status.online == true) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Row(Modifier.fillMaxWidth()) {
-                    ProtectionMetric("Blocked", compactNumber(status.blocked_queries), Modifier.weight(1f))
-                    ProtectionMetric("Queries", compactNumber(status.queries), Modifier.weight(1f))
-                    ProtectionMetric("Blocked rate", "${status.blocked_percent}%", Modifier.weight(1f))
-                }
-                LinearProgressIndicator(progress = { (status.blocked_percent / 100).toFloat().coerceIn(0f,1f) }, modifier = Modifier.fillMaxWidth().height(4.dp), color = tint, trackColor = tint.copy(alpha = .09f))
+            Icon(if (healthy) Icons.Default.CheckCircle else Icons.Default.Info, null, Modifier.size(20.dp), tint = tint)
+        }
+        if (status.online == true) {
+            Row(Modifier.fillMaxWidth()) {
+                ProtectionMetric("Blocked", compactNumber(status.blocked_queries), Modifier.weight(1f))
+                ProtectionMetric("Requests", compactNumber(status.queries), Modifier.weight(1f))
+                ProtectionMetric("Share blocked", "${status.blocked_percent}%", Modifier.weight(1f))
             }
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Icon(if(status.blocking_observed == true && status.normal_resolution) Icons.Default.CheckCircleOutline else Icons.Default.Info, null, Modifier.size(14.dp), tint = tint)
-                Text(if(status.blocking_observed == true && status.normal_resolution) "Server DNS test passed · ads blocked, normal DNS resolves" else if(!status.configured) "AdGuard integration is being configured on the server." else if(status.online == true && !status.protection_enabled) "Protection is paused; DNS still resolves normally." else "Server DNS probe has not confirmed filtering yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if(expanded) {
-                DetailLine("Last checked", timestamp(status.checked_at))
-                DetailLine("Filter lists", "${status.enabled_filters} enabled · ${compactNumber(status.rules_count)} rules")
-                DetailLine("Average DNS time", "${status.avg_processing_ms} ms")
-                DetailLine("Statistics", "Configured AdGuard statistics window · ${status.observed_clients} observed clients")
-                Text("These checks verify AdGuard and the server’s DNS path. Private DNS, VPNs, and browser encrypted DNS can bypass it on individual devices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            LinearProgressIndicator(progress = { (status.blocked_percent / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(4.dp), color = tint, trackColor = tint.copy(alpha = .12f))
         }
     }
 }
+
+/** Technical AdGuard facts; shown only under Settings > Advanced. */
+@Composable
+fun AdGuardTechnicalDetails(status: AdGuardStatus) {
+    DetailLine("DNS check", if (status.blocking_observed == true && status.normal_resolution) "Passed: ads blocked, normal DNS resolves"
+        else if (!status.configured) "AdGuard integration is being configured on the server"
+        else if (status.online == true && !status.protection_enabled) "Protection is paused; DNS still resolves normally"
+        else "Server DNS probe has not confirmed filtering yet")
+    DetailLine("Last checked", timestamp(status.checked_at))
+    DetailLine("Filter lists", "${status.enabled_filters} enabled · ${compactNumber(status.rules_count)} rules")
+    DetailLine("Average DNS time", "${status.avg_processing_ms} ms")
+    DetailLine("Statistics", "${status.observed_clients} observed clients")
+    Text("These checks verify AdGuard and the server's DNS path. Private DNS, VPNs, and browser encrypted DNS can bypass it on individual devices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
 @Composable private fun ProtectionMetric(label: String, value: String, modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) { Text(value, style = MaterialTheme.typography.titleMedium); Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(value, style = MaterialTheme.typography.titleMedium); Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
 fun compactNumber(value: Long): String = when { value >= 1_000_000 -> "%.1fM".format(value / 1_000_000.0); value >= 10_000 -> "%.1fk".format(value / 1000.0); else -> NumberFormat.getIntegerInstance().format(value) }
 
@@ -171,10 +194,19 @@ fun eventLabel(kind: String): String = when(kind) {
     "device_connected" -> "Device connected"
     "device_disconnected" -> "Device went offline"
     "unknown_device" -> "Unrecognized device joined"
-    "device_blocked" -> "Access restricted"
-    "device_unblocked" -> "Access restored"
+    "device_blocked" -> "Internet paused"
+    "device_unblocked" -> "Internet resumed"
     "router_offline" -> "Router is unreachable"
     "router_restored" -> "Router connection restored"
     "management_failed" -> "Device action failed"
     else -> kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
+}
+fun notificationLabel(kind: String): String = when(kind) {
+    "unknown_device" -> "A new device joins"
+    "router_offline" -> "Your router goes offline"
+    "router_restored" -> "Your router comes back"
+    "schedule_executed" -> "A schedule runs"
+    "schedule_failed" -> "A schedule doesn't run"
+    "management_failed" -> "A device action fails"
+    else -> eventLabel(kind)
 }

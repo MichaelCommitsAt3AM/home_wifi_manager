@@ -18,7 +18,8 @@ data class UiState(
     val loading: Boolean = false, val busy: Boolean = false, val error: String? = null,
     val message: String? = null, val authenticated: Boolean = false, val cached: Boolean = true,
     val theme: String = "system", val dynamicColors: Boolean = false,
-    val connection: ConnectionHealth = ConnectionHealth(), val exceptions: List<String> = emptyList()
+    val connection: ConnectionHealth = ConnectionHealth(), val exceptions: List<String> = emptyList(),
+    val radio: RadioSettings? = null
 )
 
 fun errorMessage(error: Throwable): String = when (error) {
@@ -44,7 +45,7 @@ fun selectDevices(devices: List<Device>, search: String, filter: String, sort: S
                 "Online" -> device.online
                 "Offline" -> !device.online
                 "Trusted" -> device.trusted
-                "Blocked" -> device.blocked
+                "Blocked", "Paused" -> device.blocked
                 else -> true
             }
     }
@@ -140,6 +141,11 @@ class WifiViewModel @Inject constructor(private val repository: RouterRepository
     fun exception(domain: String, allowed: Boolean) = action(if(allowed) "Domain exception saved" else "Domain exception removed") {
         val domains = repository.api().exception(DomainException(domain, allowed)).domains
         mutable.update { it.copy(exceptions = domains) }
+    }
+    fun loadRadio() = action { mutable.update { it.copy(radio = repository.api().radio()) } }
+    fun setRadio(standard: String?, channel: Int?) = action("Wi-Fi settings applied and confirmed by the router") {
+        val radio = repository.api().radio(RadioChange(standard, channel))
+        mutable.update { it.copy(radio = radio) }
     }
     fun history(mac: String) = action { mutable.update { it.copy(history = repository.api().events(mac), schedules = repository.api().schedules(mac)) } }
     fun activity(more: Boolean = false) = action {

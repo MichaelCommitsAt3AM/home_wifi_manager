@@ -8,6 +8,11 @@ class MockRouter(RouterAdapter):
         self.restrictions = []
         self.unavailable = False
         self.commands = []
+        self.radio = {'enabled': True, 'standard': '11n', 'channel': 11, 'auto_channel': False,
+                      'bandwidth': '20', 'transmit_power': '100', 'country': 'KE',
+                      'standards': [{'value': '11n', 'label': '802.11n only'},
+                                    {'value': '11bgn', 'label': '802.11b/g/n mixed'}],
+                      'channels': list(range(14))}
 
     async def authenticate(self):
         pass
@@ -22,6 +27,17 @@ class MockRouter(RouterAdapter):
         self.restrictions = [r for r in self.restrictions if r.mac != device.mac]
         if blocked:
             self.restrictions.append(Restriction(device.mac, 'test', 'wired'))
+
+    async def get_radio(self):
+        return dict(self.radio)
+
+    async def set_radio(self, standard, channel):
+        self.commands.append(('radio', standard, channel))
+        if standard:
+            self.radio['standard'] = standard
+        if channel is not None:
+            self.radio.update(channel=channel or self.radio['channel'], auto_channel=channel == 0)
+        return dict(self.radio)
 
     async def close(self):
         pass

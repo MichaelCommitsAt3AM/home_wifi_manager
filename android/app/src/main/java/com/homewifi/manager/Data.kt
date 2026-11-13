@@ -72,6 +72,12 @@ data class ProtectionChange(val enabled: Boolean, val minutes: Int = 5, val conf
 data class DomainException(val domain: String, val allowed: Boolean, val confirmed: Boolean = true)
 data class DomainExceptions(val domains: List<String> = emptyList())
 data class FilterRefresh(val updated: Int = 0)
+data class RadioStandard(val value: String, val label: String)
+data class RadioSettings(val enabled: Boolean = true, val standard: String = "", val channel: Int = 0,
+    val auto_channel: Boolean = false, val bandwidth: String = "", val country: String = "",
+    val standards: List<RadioStandard> = emptyList(), val channels: List<Int> = emptyList(),
+    val writes_enabled: Boolean = false)
+data class RadioChange(val standard: String? = null, val channel: Int? = null, val confirmed: Boolean = true)
 
 interface WifiApi {
     @GET("api/connection") suspend fun connection(): ConnectionHealth
@@ -83,6 +89,8 @@ interface WifiApi {
     @POST("api/adguard/exceptions") suspend fun exception(@Body body: DomainException): DomainExceptions
     @POST("api/router/access/release") suspend fun releaseRouterAccess(@Body body: RouterRelease = RouterRelease()): RouterAccessStatus
     @POST("api/router/access/resume") suspend fun resumeRouterAccess(): RouterAccessStatus
+    @GET("api/wifi/radio") suspend fun radio(): RadioSettings
+    @PUT("api/wifi/radio") suspend fun radio(@Body change: RadioChange): RadioSettings
     @GET("api/adguard") suspend fun adguard(): AdGuardStatus
     @GET("api/dashboard") suspend fun dashboard(): Dashboard
     @GET("api/devices") suspend fun devices(): List<Device>

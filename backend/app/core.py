@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     writes_enabled: bool = False
     # Only enable after the approved real-device block/unblock validation.
     verified_writes: bool = False
+    # Only enable after the approved live Wi-Fi radio (mode/channel) validation.
+    verified_radio_writes: bool = False
     protected_macs: str = ''
     protected_ips: str = '192.168.100.14,192.168.100.158,192.168.100.85'
     poll_seconds: int = Field(default=60, ge=30, le=3600)

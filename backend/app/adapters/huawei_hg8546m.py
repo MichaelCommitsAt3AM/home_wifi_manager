@@ -16,6 +16,12 @@ DEVICE_PATH = '/html/bbsp/common/GetLanUserDevInfo.asp'
 STATUS_PATH = '/html/ssmp/deviceinfo/deviceinfo.asp'
 FILTER_PATHS = {'wired': '/html/bbsp/macfilter/macfilter.asp',
                 'wireless': '/html/bbsp/wlanmacfilter/wlanmacfilter.asp'}
+RADIO_PATH = '/html/amp/wlanadv/WlanAdvance.asp'
+RADIO_OBJECT = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1'
+# The page's own dropdown choices (2.4 GHz only, region KE).
+RADIO_STANDARDS = {'11b': '802.11b', '11g': '802.11g', '11n': '802.11n only',
+                   '11bg': '802.11b/g', '11bgn': '802.11b/g/n mixed'}
+RADIO_CHANNELS = list(range(0, 14))  # 0 = automatic
 MAC_PATTERN = re.compile(r'^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$')
 
 
@@ -99,6 +105,32 @@ def parse_filters(text: str, scope: str) -> list[Restriction]:
     return restrictions
 
 
+def parse_radio(text: str) -> dict:
+    rows = constructors(text, 'stWlanWifi', 25)
+    if len(rows) != 1:
+        raise ParseError('Unexpected Wi-Fi radio record count')
+    row = rows[0]
+    if row[0] != RADIO_OBJECT:
+        raise ParseError('Unexpected Wi-Fi radio object')
+    if (row[4] not in RADIO_STANDARDS or not row[5].isdigit() or int(row[5]) not in RADIO_CHANNELS
+            or row[8] not in ('0', '1') or row[9] not in ('0', '1', '2')):
+        raise ParseError('Unrecognized Wi-Fi radio values')
+    return {'enabled': row[2] == '1', 'standard': row[4], 'channel': int(row[5]),
+            'auto_channel': row[8] == '1', 'bandwidth': {'0': 'auto', '1': '20', '2': '40'}[row[9]],
+            'transmit_power': row[6], 'country': row[7],
+            'standards': [{'value': k, 'label': v} for k, v in RADIO_STANDARDS.items()],
+            'channels': RADIO_CHANNELS}
+
+
+def page_token(text: str) -> str:
+    for tag in re.findall(r'<input[^>]*>', text):
+        if re.search(r"name=['\"]onttoken['\"]", tag):
+            m = re.search(r"value=['\"]([^'\"]+)", tag)
+            if m:
+                return m.group(1)
+    raise ParseError('Missing CSRF token')
+
+
 class HuaweiHG8546M(RouterAdapter):
     def __init__(self, settings, transport=None):
         self.settings = settings
@@ -109,6 +141,7 @@ class HuaweiHG8546M(RouterAdapter):
         self.lock = asyncio.Lock()
         self.authenticated = False
         self.auth_failed = False
+        self.radio_settle_seconds = 4.0
 
     async def _request(self, method, path, data=None, headers=None):
         try:
@@ -267,6 +300,61 @@ class HuaweiHG8546M(RouterAdapter):
                 verified = not any(r.mac == mac for r in actual)
             if not verified:
                 raise VerificationError('Router did not confirm requested restriction state')
+
+    async def get_radio(self):
+        async with self.lock:
+            return parse_radio(await self._read(RADIO_PATH))
+
+    async def set_radio(self, standard, channel):
+        if not (self.settings.writes_enabled and self.settings.verified_radio_writes):
+            raise CapabilityError('Wi-Fi radio changes await an authorized live validation')
+        if standard is not None and standard not in RADIO_STANDARDS:
+            raise CapabilityError('Unsupported Wi-Fi mode')
+        if channel is not None and channel not in RADIO_CHANNELS:
+            raise CapabilityError('Unsupported Wi-Fi channel')
+        async with self.lock:
+            page = await self._read(RADIO_PATH)
+            current = parse_radio(page)
+            want_standard = standard or current['standard']
+            want_channel = current['channel'] if channel is None else channel
+            want_auto = current['auto_channel'] if channel is None else channel == 0
+            if want_standard == current['standard'] and want_auto == current['auto_channel'] and (
+                    want_auto or want_channel == current['channel']):
+                return current
+            adv_rows = constructors(page, 'stWlanAdv', 5)
+            if len(adv_rows) != 1:
+                raise ParseError('Could not read current advanced Wi-Fi settings')
+            advanced = dict(zip(('DtimPeriod', 'BeaconPeriod', 'RTSThreshold', 'FragThreshold'), adv_rows[0][1:]))
+            if len(advanced) != 4 or not all(v.isdigit() for v in advanced.values()):
+                raise ParseError('Could not read current advanced Wi-Fi settings')
+            hw = {'auto': '0', '20': '1', '40': '2'}[current['bandwidth']]
+            data = {'x.' + k: v for k, v in advanced.items()}
+            data.update({'y.Channel': '0' if want_auto else str(want_channel),
+                         'y.AutoChannelEnable': '1' if want_auto else '0',
+                         'y.X_HW_HT20': hw, 'y.RegulatoryDomain': current['country'],
+                         'y.TransmitPower': current['transmit_power'],
+                         'y.X_HW_Standard': want_standard,
+                         'x.X_HW_Token': page_token(page)})
+            action = ('/html/amp/wlanadv/set.cgi?' + urlencode({
+                'x': RADIO_OBJECT + '.X_HW_AdvanceConf', 'y': RADIO_OBJECT,
+                'RequestFile': RADIO_PATH.lstrip('/')}, safe='/'))
+            response = await self._request('POST', action, data,
+                                           headers={'Origin': self.settings.router_url,
+                                                    'Referer': self.settings.router_url + RADIO_PATH})
+            if self._expired(response):
+                raise VerificationError('Session expired during change; refresh actual state before retrying')
+            # The radio restarts; read the real state back before declaring success.
+            actual = None
+            for _ in range(4):
+                await asyncio.sleep(self.radio_settle_seconds)
+                try:
+                    actual = parse_radio(await self._read(RADIO_PATH))
+                except (UnavailableError, ParseError):
+                    continue
+                break
+            if not actual or actual['standard'] != want_standard or actual['auto_channel'] != want_auto or                     (not want_auto and actual['channel'] != want_channel):
+                raise VerificationError('Router did not confirm the requested Wi-Fi radio settings')
+            return actual
 
     async def close(self):
         await self.client.aclose()

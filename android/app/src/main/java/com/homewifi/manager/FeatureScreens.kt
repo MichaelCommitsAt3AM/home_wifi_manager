@@ -14,11 +14,11 @@ import java.time.Duration
 import java.time.Instant
 
 fun healthLabel(state: String): String = when(state) {
-    "healthy" -> "Connection healthy"
-    "router_unreachable" -> "Router unreachable"
-    "internet_down" -> "Internet unavailable"
-    "dns_failure" -> "DNS not resolving"
-    else -> "Checking connection"
+    "healthy" -> "Internet is working"
+    "router_unreachable" -> "Can't reach your router"
+    "internet_down" -> "Internet is down"
+    "dns_failure" -> "Websites aren't loading"
+    else -> "Checking your connection"
 }
 
 fun outageDuration(outage: Outage): String = runCatching {
@@ -42,19 +42,19 @@ fun ConnectionHealthScreen(vm: WifiViewModel, state: UiState) {
         text = { Text("Measures the home server’s Internet connection, not this phone’s Wi-Fi. Transfers about 30 MB plus connection overhead through Cloudflare. Other network activity can affect the result.") },
         confirmButton = { TextButton(onClick = { confirmSpeed = false; vm.speedTest() }) { Text("Start test") } },
         dismissButton = { TextButton(onClick = { confirmSpeed = false }) { Text("Cancel") } })
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { SectionTitle("Connection health", "Observed from your home server") }
-        item { OutlinedCard { Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { SectionTitle("Internet", "Checked from your home server") }
+        item { SoftCard { Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if(health.stale) "Waiting for a fresh check" else healthLabel(health.state), style = MaterialTheme.typography.titleMedium)
-            DetailLine("Router dashboard", reachability(health.router_reachable))
+            DetailLine("Router", reachability(health.router_reachable))
             DetailLine("Internet", reachability(health.internet_reachable))
-            DetailLine("DNS resolution", reachability(health.dns_working))
+            DetailLine("Websites (DNS)", reachability(health.dns_working))
             DetailLine("Last checked", timestamp(health.checked_at))
-            Text("Checks run about every 30 seconds. Two matching observations confirm a change. Router reachability checks continue while dashboard access is released, without logging in.", style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(onClick = { vm.connection(true) }, enabled = !state.busy) { Text("Check connection") }
+            Text("Checked about every 30 seconds. Router checks continue while router access is paused.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = { vm.connection(true) }, enabled = !state.busy) { Text("Check now") }
         } } }
-        item { SectionTitle("Server speed test") }
-        item { OutlinedCard { Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { SectionTitle("Speed test", "Measures your home internet, not this phone") }
+        item { SoftCard { Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when(speed.state) {
                 "running" -> { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Testing the home server connection…") }
                 "completed" -> {
@@ -68,12 +68,12 @@ fun ConnectionHealthScreen(vm: WifiViewModel, state: UiState) {
                 "failed", "interrupted" -> Text(speed.error ?: "The test did not complete. Try again.")
                 else -> Text("Run a test when you want to check your connection speed.")
             }
-            Text("A bounded single-connection estimate to Cloudflare, not continuous usage tracking. One test per minute.", style = MaterialTheme.typography.bodySmall)
+            Text("A quick estimate, one test per minute at most.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(onClick = { confirmSpeed = true }, enabled = !state.busy && speed.state != "running") { Text("Run speed test") }
         } } }
-        item { SectionTitle("Outage history", "Up to 100 episodes within ${state.settings.retention_days} days · timing is approximate") }
-        if(health.outages.isEmpty()) item { Text("No confirmed outages recorded yet.", style = MaterialTheme.typography.bodyMedium) }
-        items(health.outages) { outage -> OutlinedCard { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item { SectionTitle("Outages", "Last ${state.settings.retention_days} days · times are approximate") }
+        if(health.outages.isEmpty()) item { Text("No outages recorded.", style = MaterialTheme.typography.bodyMedium) }
+        items(health.outages) { outage -> SoftCard { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(healthLabel(outage.kind), style = MaterialTheme.typography.titleSmall)
             Text("${timestamp(outage.started_at)} → ${outage.ended_at?.let { timestamp(it) } ?: "Ongoing"}", style = MaterialTheme.typography.bodySmall)
             Text(outageDuration(outage), style = MaterialTheme.typography.bodySmall)
@@ -96,15 +96,15 @@ fun AdGuardControls(vm: WifiViewModel, state: UiState) {
         dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } }) }
     val status = state.dashboard.adguard
     val enabled = status.online == true && !state.busy
-    Text("Protection controls", style = MaterialTheme.typography.titleSmall)
+    Text("Controls", style = MaterialTheme.typography.titleSmall)
     if(status.protection_enabled) {
-        Text("Pause protection for everyone using this DNS server:", style = MaterialTheme.typography.bodySmall)
+        Text("Turn ad blocking off for everyone on your network:", style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(5, 15, 60).forEach { minutes -> OutlinedButton(enabled = enabled, onClick = {
                 confirm = PendingControl("Pause protection for $minutes minutes?", "AdGuard will automatically resume protection using its own timer. DNS service stays running.") { vm.protection(false, minutes) }
             }) { Text(if(minutes == 60) "1 h" else "$minutes min") } }
         }
-    } else Button(onClick = { vm.protection(true) }, enabled = enabled) { Text("Resume protection") }
+    } else Button(onClick = { vm.protection(true) }, enabled = enabled) { Text("Turn ad blocking back on") }
     OutlinedButton(enabled = enabled, onClick = {
         confirm = PendingControl("Refresh filter lists?", "Ask AdGuard to refresh its existing blocking lists.") { vm.refreshFilters() }
     }) { Text("Refresh filter lists") }

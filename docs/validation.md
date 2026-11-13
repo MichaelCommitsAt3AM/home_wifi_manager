@@ -93,3 +93,16 @@ Updated APK installed on the Galaxy A35 over wireless ADB. All three instrumente
 Added a GitHub Releases updater with a banner above the app header, a safe debug-only preview at the top of Settings, bounded HTTPS downloads, SHA-256 verification and package/version/signing-identity checks before invoking Android's consent-based installation flow. The updater uses no backend credentials. Android debug/release builds and lint passed; 15 Android unit tests cover device workflows and updater metadata/source/version/size validation. Backend regression suite: 38 tests passed. Release signing retains the installed household app's certificate and is configured using encrypted GitHub Actions secrets; no private signing/deployment files are included in Git.
 
 The GitHub workflows check Android and backend source and publish only the signed Android APK, checksum and updater metadata. A release is drafted, populated and only then published. A separate opt-in phone test can download a newer published APK and verify its real checksum and signing identity without launching installation.
+
+## Wi-Fi mode and channel (13 November 2026)
+
+Added `GET/PUT /api/wifi/radio`, an HG8546M adapter read/write with readback verification, a Wi-Fi radio screen (Settings > Wi-Fi radio) and a phone-side channel analyzer (`WifiManager` scan, 2.4 GHz overlap scoring, requires location permission, nothing stored or sent). Backend: 41 tests pass (3 new, mocked router). Android: 11 unit tests pass (5 analyzer, 1 view-model radio flow).
+
+Not yet validated on the real router. Live validation plan with owner approval: (1) set `VERIFIED_RADIO_WRITES=true`, (2) change the channel only (11 to a quiet one), confirm the router page and a phone reconnect, (3) later change mode `11n` to `11bgn` and back. Wi-Fi drops for about a minute each time. If the router rejects the request (HTTP 200 error page), capture the page's full apply function and extend the adapter's parameters.
+
+### Live result (13 November 2026)
+
+With owner approval and the owner signed in, the adapter's exact request body (minimal field set, echoing current values, token last) was posted from the browser to `set.cgi?x=<obj>.X_HW_AdvanceConf&y=<obj>`. Channel 11 to 6 was accepted and confirmed by rereading the page; a second request restored channel 11 and 20 MHz width, also confirmed. Mode was not changed (stayed `11n`). The width read as Auto (0) before the first request although it read 20 MHz (1) during the earlier read-only inspection; the requests only echoed the value they read, and it was restored to 20 MHz in the second request. Mode `11bgn` remains to be validated. This exercised the request format, not the Python adapter against the real router.
+
+Mode follow-up (13 November 2026, owner signed in): `11n` to `11bgn` and back to `11n` were each accepted and confirmed by rereading the page; channel (11) and width (20 MHz) were unchanged throughout. Router session logged out afterwards. Both channel and mode changes are now validated at the request level, so `VERIFIED_RADIO_WRITES=true` is reasonable once the updated backend is deployed.
+

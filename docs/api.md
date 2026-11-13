@@ -14,6 +14,8 @@ All `/api/` endpoints require `Authorization: Bearer <API_TOKEN>`. There is one 
 | POST | `/api/adguard/filters/refresh` | `{ "confirmed": true }`; refresh existing blocking lists, return updated count |
 | GET | `/api/adguard/exceptions` | Domain exceptions managed by this app |
 | POST | `/api/adguard/exceptions` | `{ "domain": "example.com", "allowed": true, "confirmed": true }`; add/remove an app-owned exception |
+| GET | `/api/wifi/radio` | Current 2.4 GHz mode, channel (or auto), width, country, allowed modes/channels, and whether changes are enabled; requires active router access |
+| PUT | `/api/wifi/radio` | `{ "standard": "11bgn", "channel": 6, "confirmed": true }`; either field optional (`channel: 0` = automatic, modes `11b/11g/11n/11bg/11bgn`). Restarts Wi-Fi; verified by re-reading the router. 409 until `VERIFIED_RADIO_WRITES` is enabled |
 | GET | `/api/devices` | All known devices, local metadata and router restriction scope |
 | GET | `/api/devices/{mac}` | One known identity |
 | PATCH | `/api/devices/{mac}` | `alias`, `trusted`, `protected`; local metadata only |
