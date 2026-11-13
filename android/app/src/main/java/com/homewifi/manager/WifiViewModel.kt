@@ -142,7 +142,13 @@ class WifiViewModel @Inject constructor(private val repository: RouterRepository
         val domains = repository.api().exception(DomainException(domain, allowed)).domains
         mutable.update { it.copy(exceptions = domains) }
     }
-    fun loadRadio() = action { mutable.update { it.copy(radio = repository.api().radio()) } }
+    fun loadRadio() {
+        viewModelScope.launch {
+            try { mutable.update { it.copy(radio = repository.api().radio()) } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { mutable.update { it.copy(error = if (e is HttpException && e.code() == 502) "The router's Wi-Fi page could not be read. Try again in a moment." else errorMessage(e)) } }
+        }
+    }
     fun setRadio(standard: String?, channel: Int?) = action("Wi-Fi settings applied and confirmed by the router") {
         val radio = repository.api().radio(RadioChange(standard, channel))
         mutable.update { it.copy(radio = radio) }

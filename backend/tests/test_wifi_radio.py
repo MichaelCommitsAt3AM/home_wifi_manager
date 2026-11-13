@@ -90,3 +90,14 @@ def test_radio_api(system):
     r = put(standard='11bgn', channel=6, confirmed=True)
     assert r.status_code == 200 and r.json()['standard'] == '11bgn' and adapter.radio['channel'] == 6
     assert 'wifi_radio_changed' in [e['kind'] for e in client.get('/api/activity', headers=HEADERS).json()]
+
+
+def test_radio_parser_ignores_duplicate_and_unrelated_records():
+    page = RADIO_PAGE.format(std='11n', ch='11', auto='0')
+    record = page.split('new Array(')[1].split(',null)')[0]
+    other = record.replace('WLANConfiguration\x2e1"', 'WLANConfiguration\x2e5"', 1)
+    combined = page + 'var A = new Array(' + record + ',null);var B = new Array(' + other + ',null);'
+    assert parse_radio(combined)['channel'] == 11
+    with pytest.raises(ParseError) as error:
+        parse_radio('<title>Waiting</title>')
+    assert '0 usable' in str(error.value)

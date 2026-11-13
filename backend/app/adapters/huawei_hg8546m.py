@@ -106,12 +106,17 @@ def parse_filters(text: str, scope: str) -> list[Restriction]:
 
 
 def parse_radio(text: str) -> dict:
-    rows = constructors(text, 'stWlanWifi', 25)
+    # Pick the record for the radio we manage; ignore unrelated or duplicate declarations.
+    rows = []
+    for match in re.finditer(r'new\s+stWlanWifi\s*\(([^\r\n]*?)\)', text):
+        values = [js_string(x) for x in re.findall(r'"((?:\\.|[^"\\])*)"', match.group(1))]
+        if len(values) == 25 and values[0] == RADIO_OBJECT and values not in rows:
+            rows.append(values)
     if len(rows) != 1:
-        raise ParseError('Unexpected Wi-Fi radio record count')
+        title = re.search(r'<title>([^<]{0,60})', text)
+        raise ParseError('Unexpected Wi-Fi radio record count (%d usable, %d declarations, page %d bytes, title %r)' % (
+            len(rows), len(re.findall(r'new\s+stWlanWifi', text)), len(text), title.group(1) if title else ''))
     row = rows[0]
-    if row[0] != RADIO_OBJECT:
-        raise ParseError('Unexpected Wi-Fi radio object')
     if (row[4] not in RADIO_STANDARDS or not row[5].isdigit() or int(row[5]) not in RADIO_CHANNELS
             or row[8] not in ('0', '1') or row[9] not in ('0', '1', '2')):
         raise ParseError('Unrecognized Wi-Fi radio values')
